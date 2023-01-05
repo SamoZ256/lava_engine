@@ -1,3 +1,0 @@
-/Users/samuliak/Desktop/lava_engine/build/metal/CMakeFiles/lava_engine.dir
-/Users/samuliak/Desktop/lava_engine/build/metal/CMakeFiles/edit_cache.dir
-/Users/samuliak/Desktop/lava_engine/build/metal/CMakeFiles/rebuild_cache.dir
