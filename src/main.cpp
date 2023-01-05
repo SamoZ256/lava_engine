@@ -1640,7 +1640,7 @@ int main() {
 #ifdef LV_BACKEND_VULKAN
         deferredVPUniformBuffer.upload(&viewProj);
 #elif defined LV_BACKEND_METAL
-        deferredGraphicsPipeline.uploadPushConstants(&viewProj, 1, sizeof(glm::mat4), LV_SHADER_STAGE_VERTEX_BIT);
+        deferredGraphicsPipeline.uploadPushConstants(&viewProj, 1, MSL_SIZEOF(glm::mat4), LV_SHADER_STAGE_VERTEX_BIT);
 #endif
 
         //For each model
@@ -1717,7 +1717,7 @@ int main() {
 #ifdef LV_BACKEND_VULKAN
                 shadowVPUniformBuffers[i].upload(&pcShadowVP);
 #elif defined LV_BACKEND_METAL
-                shadowGraphicsPipeline.uploadPushConstants(&pcShadowVP, 0, sizeof(PCShadowVP), LV_SHADER_STAGE_VERTEX_BIT);
+                shadowGraphicsPipeline.uploadPushConstants(&pcShadowVP, 0, MSL_SIZEOF(PCShadowVP), LV_SHADER_STAGE_VERTEX_BIT);
 #endif
 
                 //For each model
@@ -1764,7 +1764,7 @@ int main() {
         PCSsaoVP pcSsaoVP{g_game->scene().camera->projection, g_game->scene().camera->view, glm::inverse(viewProj)};
         ssaoGraphicsPipeline.uploadPushConstants(&pcSsaoVP, 0
 #ifdef LV_BACKEND_METAL
-        , sizeof(PCSsaoVP), LV_SHADER_STAGE_FRAGMENT_BIT
+        , MSL_SIZEOF(PCSsaoVP), LV_SHADER_STAGE_FRAGMENT_BIT
 #endif
         );
 
@@ -1810,7 +1810,7 @@ int main() {
 #ifdef LV_BACKEND_VULKAN
         skylightGraphicsPipeline.uploadPushConstants(&skylightViewProj, 0);
 #elif defined LV_BACKEND_METAL
-        skylightGraphicsPipeline.uploadPushConstants(&skylightViewProj, 0, sizeof(glm::mat4), LV_SHADER_STAGE_VERTEX_BIT);
+        skylightGraphicsPipeline.uploadPushConstants(&skylightViewProj, 0, MSL_SIZEOF(glm::mat4), LV_SHADER_STAGE_VERTEX_BIT);
 #endif
 
 		//swapChain.activeFramebuffer->encoder->setCullMode(LV_CULL_MODE_NONE);
@@ -1863,7 +1863,7 @@ int main() {
 #ifdef LV_BACKEND_VULKAN
         mainVPUniformBuffer.upload(&uboMainVP);
 #elif defined LV_BACKEND_METAL
-        mainGraphicsPipeline.uploadPushConstants(&uboMainVP, 2, sizeof(UBOMainVP), LV_SHADER_STAGE_FRAGMENT_BIT);
+        mainGraphicsPipeline.uploadPushConstants(&uboMainVP, 2, MSL_SIZEOF(UBOMainVP), LV_SHADER_STAGE_FRAGMENT_BIT);
 #endif
 
         directLight.uploadUniforms();
@@ -1874,7 +1874,7 @@ int main() {
 #elif defined LV_BACKEND_METAL
         directLight.lightUniformBuffer.bindToFragmentShader(0);
 
-        mainGraphicsPipeline.uploadPushConstants(shadowVPs.data(), 1, shadowVPs.size() * sizeof(glm::mat4), LV_SHADER_STAGE_FRAGMENT_BIT);
+        mainGraphicsPipeline.uploadPushConstants(shadowVPs.data(), 1, shadowVPs.size() * MSL_SIZEOF(glm::mat4), LV_SHADER_STAGE_FRAGMENT_BIT);
 #endif
 
         swapChain.renderFullscreenTriangle();
