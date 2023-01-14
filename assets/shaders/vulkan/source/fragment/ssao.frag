@@ -23,7 +23,8 @@ layout (push_constant) uniform VP  {
 } u_vp;
 
 const int SSAO_KERNEL_SIZE = 24;
-const float SSAO_RADIUS = 4.0;
+const float SSAO_RADIUS = 1.0;
+const float RANGE_CHECK_RADIUS = 0.2;
 
 const vec3 SSAO_KERNEL[64] = vec3[](
     vec3(-0.0622651, -0.0516783, 0.0374449),
@@ -125,7 +126,7 @@ void main()  {
 	// Calculate occlusion value
 	float occlusion = 0.0;
 	// remove banding
-	const float bias = 0.25;
+	const float bias = 0.05;
 
 	for (int i = 0; i < SSAO_KERNEL_SIZE; i++) {		
 		vec3 samplePos = TBN * SSAO_KERNEL[i].xyz; 
@@ -140,7 +141,7 @@ void main()  {
         float sampleViewZ = (u_vp.view * vec4(reconstructPosFromDepth(u_vp.invViewProj, vec2(offset.x, 1.0 - offset.y), sampleDepth), 1.0)).z;
         //FragColor = sampleDepth;
 
-		float rangeCheck = smoothstep(0.0, 1.0, SSAO_RADIUS / abs(depth - sampleDepth));
+		float rangeCheck = smoothstep(0.0, 1.0, RANGE_CHECK_RADIUS / abs(depth - sampleDepth));
 		occlusion += (viewZ <= sampleViewZ - bias ? rangeCheck : 0.0);
         //if (sampleDepth < texture(u_positionDepth, inTexCoord).w)
         //    occlusion += 1.0;

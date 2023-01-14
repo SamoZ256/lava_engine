@@ -5,6 +5,7 @@
 #include "lvutils/entity/transform.hpp"
 #include "lvutils/entity/material.hpp"
 #include "lvutils/entity/entity.hpp"
+#include "lvutils/entity/mesh_loader.hpp"
 #include "lvutils/scripting/script_manager.hpp"
 #include "lvutils/camera/camera.hpp"
 
@@ -203,7 +204,7 @@ void Scene::loadEntity(entt::entity entity, nh::json& savedEntity) {
 
             meshComponent.init(vertices, indices);
 
-            for (uint16_t texIndex = 0; texIndex < 3; texIndex++) {
+            for (uint16_t texIndex = 0; texIndex < 2; texIndex++) {
                 std::string texIndexStr = std::to_string(texIndex);
                 lv::Texture* texture = nullptr;
                 if (component["textures"].contains(texIndexStr)) {
@@ -443,10 +444,20 @@ void Scene::changeState(SceneState newState) {
         state = newState;
 
         if (state == SCENE_STATE_EDITOR) {
+            physicsWorld.destroy();
+
             //TODO: destroy components of entities created during the runtime
 
             auto view = runtimeRegistry.view<lv::TagComponent>();
             for (auto& entity : view) {
+                if (runtimeRegistry.all_of<lv::ColliderComponent>(entity)) {
+                    runtimeRegistry.get<lv::ColliderComponent>(entity).destroy();
+                }
+
+                if (runtimeRegistry.all_of<lv::RigidBodyComponent>(entity)) {
+                    runtimeRegistry.get<lv::RigidBodyComponent>(entity).destroy();
+                }
+
                 runtimeRegistry.destroy(entity);
             }
 
@@ -457,6 +468,8 @@ void Scene::changeState(SceneState newState) {
 
             registry = &editorRegistry;
         } else if (state == SCENE_STATE_RUNTIME) {
+            physicsWorld.init();
+
             auto view = editorRegistry.view<lv::TagComponent>();
             for (auto& entity : view) {
                 lv::Entity editorEntity(entity, &editorRegistry);
@@ -488,11 +501,24 @@ void Scene::changeState(SceneState newState) {
                             scriptComponent.script->lastModified = lastModified;
                         }
                     }
-                    runtimeEntity.addComponent<lv::ScriptComponent>(editorEntity.getComponent<lv::ScriptComponent>());
+                    lv::ScriptComponent& runtimeScriptComponent = runtimeEntity.addComponent<lv::ScriptComponent>(editorEntity.getComponent<lv::ScriptComponent>());
+                    if (runtimeScriptComponent.isValid())
+                        runtimeScriptComponent.entity = runtimeScriptComponent.script->entityConstructor(runtimeEntity.ID, &runtimeRegistry);
+                        runtimeScriptComponent.entity->window = scriptComponent.entity->window;
                 }
 
                 if (editorEntity.hasComponent<lv::CameraComponent>())
                     runtimeEntity.addComponent<lv::CameraComponent>(editorEntity.getComponent<lv::CameraComponent>());
+
+                if (editorEntity.hasComponent<lv::RigidBodyComponent>()) {
+                    runtimeEntity.addComponent<lv::RigidBodyComponent>(editorEntity.getComponent<lv::RigidBodyComponent>());
+                }
+
+                if (editorEntity.hasComponent<lv::ColliderComponent>()) {
+                    lv::ColliderComponent& colliderComponent = runtimeEntity.addComponent<lv::ColliderComponent>(editorEntity.getComponent<lv::ColliderComponent>());
+                    colliderComponent.init();
+                    runtimeEntity.getComponent<lv::RigidBodyComponent>().init(colliderComponent);
+                }
             }
 
             if (g_editor->activeViewport == VIEWPORT_TYPE_GAME) {
@@ -529,5 +555,44 @@ void Scene::update(float dt) {
             if (scriptComponent.isValid())
                 scriptComponent.entity->update(dt);
         }
+
+        auto view2 = runtimeRegistry.view<lv::ColliderComponent, lv::RigidBodyComponent, lv::TransformComponent>();
+        for (auto& entity : view) {
+            lv::TransformComponent& transformComponent = runtimeRegistry.get<lv::TransformComponent>(entity);
+            lv::RigidBodyComponent& rigidBodyComponent = runtimeRegistry.get<lv::RigidBodyComponent>(entity);
+
+            rigidBodyComponent.rigidBody->;
+        }
+
+        //TODO: add option to change how many steps should be made
+        physicsWorld.world->stepSimulation(dt, 1);
+    }
+}
+
+//New entity functions
+void Scene::newEntityWithModel(const char* filename) {
+    lv::Entity entity(addEntity(), registry);
+    entity.getComponent<lv::TagComponent>().name = std::filesystem::path(filename).stem().string();
+
+    entity.addComponent<lv::TransformComponent>();
+    
+    lv::MeshLoader meshLoader
+#ifdef LV_BACKEND_VULKAN
+        (g_game->deferredLayout)
+#endif
+    ;
+    meshLoader.loadFromFile(filename);
+    for (unsigned int i = 0; i < meshLoader.meshes.size(); i++) {
+        lv::Entity entity2(addEntity(), registry);
+        entity2.addComponent<lv::TransformComponent>();
+        entity2.addComponent<lv::MeshComponent>(meshLoader.meshes[i]);
+        entity2.addComponent<lv::MaterialComponent>(
+#ifdef LV_BACKEND_VULKAN
+            g_game->deferredLayout
+#endif
+        );
+
+        entity.getComponent<lv::NodeComponent>().childs.push_back(entity2.ID);
+        entity2.getComponent<lv::NodeComponent>().parent = entity.ID;
     }
 }

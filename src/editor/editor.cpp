@@ -341,6 +341,31 @@ void Editor::createViewport(const char* title, ViewportType viewportType) {
         }
         ImGui::Image((ImTextureID)viewportSets[lv::g_swapChain->crntFrame], viewportSize);
 
+        //Drag drop
+        if (ImGui::BeginDragDropTarget()) {
+            const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(ASSET_DRAG_DROP_PAYLOAD_ID);
+            if (payload) {
+                std::string itemPath((const char*)payload->Data);
+                std::cout << itemPath << std::endl;
+
+                std::string extension = std::filesystem::path(itemPath).extension();
+                std::cout << extension << std::endl;
+
+                /*
+                if (extension == ".json") {
+                    App::g_application.addScene();
+                    App::g_application.scenes[App::g_application.scenes.size() - 1].filename = itemPath;
+                    App::g_application.changeScene(App::g_application.scenes.size() - 1);
+                }
+                */
+                if (extension == ".obj" || extension == ".gltf" || extension == ".fbx" || extension == ".blend") {
+                    g_game->scene().newEntityWithModel(itemPath.c_str());
+                }
+            }
+
+            ImGui::EndDragDropTarget();
+        }
+
         //Gizmos
         if (viewportActive) {
             //Getting gizmos type

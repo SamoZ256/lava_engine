@@ -10,11 +10,6 @@ struct MATERIAL
     float metallic;
 };
 
-struct VP
-{
-    float4x4 viewProj;
-};
-
 struct main0_out
 {
     float4 outNormalRoughness [[color(0)]];
@@ -27,11 +22,12 @@ struct main0_in
     float3 inNormal [[user(locn1)]];
 };
 
-fragment main0_out main0(main0_in in [[stage_in]], constant MATERIAL& u_material [[buffer(0)]], texture2d<float> u_roughnessTexture [[texture(0)]], texture2d<float> u_albedoTexture [[texture(1)]], texture2d<float> u_metallicTexture [[texture(2)]], sampler u_roughnessTextureSmplr [[sampler(0)]], sampler u_albedoTextureSmplr [[sampler(1)]], sampler u_metallicTextureSmplr [[sampler(2)]])
+fragment main0_out main0(main0_in in [[stage_in]], constant MATERIAL& u_material [[buffer(0)]], texture2d<float> u_metallicRoughnessTexture [[texture(0)]], texture2d<float> u_albedoTexture [[texture(1)]], sampler u_metallicRoughnessTextureSmplr [[sampler(0)]], sampler u_albedoTextureSmplr [[sampler(1)]])
 {
     main0_out out = {};
-    out.outNormalRoughness = float4(in.inNormal, (u_roughnessTexture.sample(u_roughnessTextureSmplr, in.inTexCoord) * u_material.roughness).x);
-    out.outAlbedoMetallic = float4((u_albedoTexture.sample(u_albedoTextureSmplr, in.inTexCoord).xyz * u_material.albedo.xyz) * u_material.albedo.w, (u_metallicTexture.sample(u_metallicTextureSmplr, in.inTexCoord) * u_material.metallic).x);
+    float2 metallicRoughness = u_metallicRoughnessTexture.sample(u_metallicRoughnessTextureSmplr, in.inTexCoord).xy;
+    out.outNormalRoughness = float4(in.inNormal, metallicRoughness.y * u_material.roughness);
+    out.outAlbedoMetallic = float4((u_albedoTexture.sample(u_albedoTextureSmplr, in.inTexCoord).xyz * u_material.albedo.xyz) * u_material.albedo.w, metallicRoughness.x * u_material.metallic);
     return out;
 }
 

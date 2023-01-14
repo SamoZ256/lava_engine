@@ -14,6 +14,8 @@
 #include "lvutils/entity/node.hpp"
 #include "lvutils/camera/arcball_camera.hpp"
 
+#include "lvutils/physics/rigid_body.hpp"
+
 namespace nh = nlohmann;
 
 enum SceneState {
@@ -35,6 +37,9 @@ public:
     entt::registry runtimeRegistry;
 
     entt::registry* registry = &editorRegistry;
+
+    //Physics
+    lv::PhysicsWorld physicsWorld;
 
     std::string name;
     bool loaded = false;
@@ -80,6 +85,9 @@ public:
     void start();
 
     void update(float dt);
+
+    //New entity functions
+    void newEntityWithModel(const char* filename);
 };
 
 #endif

@@ -8,7 +8,7 @@
 #define LVND_DEBUG
 #ifdef LV_BACKEND_VULKAN
 #define LVND_BACKEND_VULKAN
-#elif defined LV_BACKEND_METAL
+#elif defined(LV_BACKEND_METAL)
 #define LVND_BACKEND_METAL
 #endif
 #include "lvnd/lvnd.h"
@@ -47,6 +47,8 @@ void newEntityCreateEmpty();
 void newEntityLoadModel();
 
 void newEntityPlane();
+
+void duplicateEntity();
 
 //Macros
 
@@ -287,6 +289,11 @@ int main() {
     LvndMenuItem* newEntityPlaneMenuItem = lvndCreateMenuItem("Plane", newEntityPlane, "");
     lvndMenuAddMenuItem(newEntityMenu, newEntityPlaneMenuItem);
 
+    lvndMenuAddSeparator(entityMenu);
+
+    LvndMenuItem* entityDuplicateMenuItem = lvndCreateMenuItem("Duplicate", duplicateEntity, "d");
+    lvndMenuAddMenuItem(entityMenu, entityDuplicateMenuItem);
+
     /*
     lvndMenuAddSeparator(entityMenu);
     LvndMenuItem* fooMenuItem = lvndCreateMenuItem("Foo", nullptr, "");
@@ -307,7 +314,7 @@ int main() {
 #ifdef LV_BACKEND_VULKAN
     lv::InstanceCreateInfo instanceCreateInfo;
 	instanceCreateInfo.applicationName = "Lava Engine";
-	instanceCreateInfo.enableValidationLayers = true;
+	instanceCreateInfo.enableValidationLayers = false;
 	lv::Instance instance(instanceCreateInfo);
 
 	lv::DeviceCreateInfo deviceCreateInfo;
@@ -319,7 +326,7 @@ int main() {
 
 	lv::SwapChainCreateInfo swapChainCreateInfo;
 	swapChainCreateInfo.window = window;
-	swapChainCreateInfo.vsyncEnabled = false;
+	swapChainCreateInfo.vsyncEnabled = true;
 	lv::SwapChain swapChain(swapChainCreateInfo);
 
 	lv::DescriptorPoolCreateInfo descriptorPoolCreateInfo;
@@ -367,14 +374,14 @@ int main() {
     lv::PipelineLayout deferredLayout;
     deferredLayout.descriptorSetLayouts.resize(3);
 
-	deferredLayout.descriptorSetLayouts[0].addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_VERTEX_BIT | LV_SHADER_STAGE_FRAGMENT_BIT); //View projection
+	deferredLayout.descriptorSetLayouts[0].addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_VERTEX_BIT/* | LV_SHADER_STAGE_FRAGMENT_BIT*/); //View projection
 
 	deferredLayout.descriptorSetLayouts[1].addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_FRAGMENT_BIT); //Material
 
 	//descriptorManager.getDescriptorSetLayout(SHADER_TYPE_DEFERRED, 2).addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT); //Available textures
 	deferredLayout.descriptorSetLayouts[2].addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Albedo texture
-	deferredLayout.descriptorSetLayouts[2].addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Roughness texture
-	deferredLayout.descriptorSetLayouts[2].addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Metallic texture
+	deferredLayout.descriptorSetLayouts[2].addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Metallic roughness texture
+	//deferredLayout.descriptorSetLayouts[2].addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Metallic texture
 	//deferredLayout.descriptorSetLayouts[2].addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Normal texture
 
     //Shadow shader
@@ -428,9 +435,9 @@ int main() {
 
 	pointLightLayout.descriptorSetLayouts[0].addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_VERTEX_BIT); //View projection
     pointLightLayout.descriptorSetLayouts[0].addBinding(1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_FRAGMENT_BIT); //Inverse view projection
-    pointLightLayout.descriptorSetLayouts[0].addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Depth
-    pointLightLayout.descriptorSetLayouts[0].addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Normal roughness
-    pointLightLayout.descriptorSetLayouts[0].addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Albedo metallic
+    pointLightLayout.descriptorSetLayouts[0].addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Depth
+    pointLightLayout.descriptorSetLayouts[0].addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Normal roughness
+    pointLightLayout.descriptorSetLayouts[0].addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Albedo metallic
 
     //HDR shader
     lv::PipelineLayout hdrLayout;
@@ -2234,30 +2241,7 @@ void newEntityLoadModel() {
     std::string filename = Editor::getFileDialogResult("ModelFileDialog", "Model files", "gltf,obj,fbx,blend");
 
     if (filename != "") {
-        lv::Entity entity(g_game->scene().addEntity(), g_game->scene().registry);
-        entity.getComponent<lv::TagComponent>().name = std::filesystem::path(filename).stem().string();
-
-        entity.addComponent<lv::TransformComponent>();
-        
-        lv::MeshLoader meshLoader
-#ifdef LV_BACKEND_VULKAN
-            (g_game->deferredLayout)
-#endif
-        ;
-        meshLoader.loadFromFile(filename.c_str());
-        for (unsigned int i = 0; i < meshLoader.meshes.size(); i++) {
-            lv::Entity entity2(g_game->scene().addEntity(), g_game->scene().registry);
-            entity2.addComponent<lv::TransformComponent>();
-            entity2.addComponent<lv::MeshComponent>(meshLoader.meshes[i]);
-            entity2.addComponent<lv::MaterialComponent>(
-#ifdef LV_BACKEND_VULKAN
-                g_game->deferredLayout
-#endif
-            );
-
-            entity.getComponent<lv::NodeComponent>().childs.push_back(entity2.ID);
-            entity2.getComponent<lv::NodeComponent>().parent = entity.ID;
-        }
+        g_game->scene().newEntityWithModel(filename.c_str());
     }
 }
 
@@ -2279,4 +2263,38 @@ void newEntityPlane() {
         g_game->deferredLayout
 #endif
     );
+}
+
+void duplicateEntity() {
+    lv::Entity entity(g_game->scene().addEntity(), g_game->scene().registry);
+    lv::Entity selectedEntity(g_editor->selectedEntityID, g_game->scene().registry);
+
+    //Copying components
+    entity.addComponent<lv::TagComponent>(selectedEntity.getComponent<lv::TagComponent>());
+    lv::NodeComponent& nodeComponent = entity.addComponent<lv::NodeComponent>(selectedEntity.getComponent<lv::NodeComponent>());
+    if (nodeComponent.parent != lv::Entity::nullEntity)
+        g_game->scene().registry->get<lv::NodeComponent>(nodeComponent.parent).childs.push_back(entity.ID);
+    nodeComponent.childs.clear();
+    
+    if (selectedEntity.hasComponent<lv::TransformComponent>())
+        entity.addComponent<lv::TransformComponent>(selectedEntity.getComponent<lv::TransformComponent>());
+
+    if (selectedEntity.hasComponent<lv::MeshComponent>())
+        entity.addComponent<lv::MeshComponent>(selectedEntity.getComponent<lv::MeshComponent>());
+
+    if (selectedEntity.hasComponent<lv::MaterialComponent>())
+        entity.addComponent<lv::MaterialComponent>(selectedEntity.getComponent<lv::MaterialComponent>());
+
+    if (selectedEntity.hasComponent<lv::ScriptComponent>()) {
+        lv::ScriptComponent& scriptComponent = entity.addComponent<lv::ScriptComponent>(selectedEntity.getComponent<lv::ScriptComponent>());
+        if (scriptComponent.isValid())
+            scriptComponent.entity = scriptComponent.script->entityConstructor(scriptComponent.entity->ID, g_game->scene().registry);
+    }
+
+    if (selectedEntity.hasComponent<lv::CameraComponent>()) {
+        lv::CameraComponent& cameraComponent = entity.addComponent<lv::CameraComponent>(selectedEntity.getComponent<lv::CameraComponent>());
+        cameraComponent.active = false;
+    }
+    
+    g_editor->selectedEntityID = entity.ID;
 }

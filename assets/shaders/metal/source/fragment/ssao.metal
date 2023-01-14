@@ -98,24 +98,24 @@ fragment main0_out main0(main0_in in [[stage_in]], constant VP& u_vp [[buffer(0)
     for (int i = 0; i < 24; i++)
     {
         float3 samplePos = TBN * _464[i];
-        samplePos = fragPos + (samplePos * 4.0);
+        samplePos = fragPos + (samplePos * 1.0);
         float4 offset = u_vp.projection * float4(samplePos, 1.0);
-        float _486 = offset.w;
-        float4 _487 = offset;
-        float2 _490 = _487.xy / float2(_486);
-        offset.x = _490.x;
-        offset.y = _490.y;
-        float4 _495 = offset;
-        float2 _500 = (_495.xy * 0.5) + float2(0.5);
-        offset.x = _500.x;
-        offset.y = _500.y;
+        float _485 = offset.w;
+        float4 _486 = offset;
+        float2 _489 = _486.xy / float2(_485);
+        offset.x = _489.x;
+        offset.y = _489.y;
+        float4 _494 = offset;
+        float2 _499 = (_494.xy * 0.5) + float2(0.5);
+        offset.x = _499.x;
+        offset.y = _499.y;
         float sampleDepth = u_depth.sample(u_depthSmplr, float2(offset.x, 1.0 - offset.y)).x;
         float4x4 param_3 = u_vp.invViewProj;
         float2 param_4 = float2(offset.x, 1.0 - offset.y);
         float param_5 = sampleDepth;
         float sampleViewZ = (u_vp.view * float4(reconstructPosFromDepth(param_3, param_4, param_5), 1.0)).z;
-        float rangeCheck = smoothstep(0.0, 1.0, 4.0 / abs(depth - sampleDepth));
-        occlusion += ((viewZ <= (sampleViewZ - 0.25)) ? rangeCheck : 0.0);
+        float rangeCheck = smoothstep(0.0, 1.0, 0.20000000298023223876953125 / abs(depth - sampleDepth));
+        occlusion += ((viewZ <= (sampleViewZ - 0.0500000007450580596923828125)) ? rangeCheck : 0.0);
     }
     out.FragColor = 1.0 - (occlusion / 24.0);
     return out;
