@@ -1,5 +1,7 @@
 #include "scene.hpp"
 
+#include <thread>
+
 #include "lvutils/entity/tag.hpp"
 #include "lvutils/entity/mesh.hpp"
 #include "lvutils/entity/transform.hpp"
@@ -8,6 +10,7 @@
 #include "lvutils/entity/mesh_loader.hpp"
 #include "lvutils/scripting/script_manager.hpp"
 #include "lvutils/camera/camera.hpp"
+#include "lvutils/disk_io/disk_io.hpp"
 
 #include "../editor/editor.hpp"
 
@@ -179,22 +182,27 @@ void Scene::loadEntity(entt::entity entity, nh::json& savedEntity) {
 
             std::vector<lv::MainVertex> vertices((lv::MainVertex*)vertChar, (lv::MainVertex*)vertChar + strlen(vertChar) * sizeof(char));
             */
-            std::string vertDataFilename = component["vertDataFilename"];
-            std::ifstream vertFile(vertDataFilename.c_str(), std::ios::in | std::ios::binary);
-            size_t vertSize = std::filesystem::file_size(vertDataFilename);
-            char* vertData = (char*)malloc(vertSize);
-            vertFile.read(vertData, vertSize);
-            std::vector<lv::MainVertex> vertices((lv::MainVertex*)vertData, (lv::MainVertex*)vertData + vertSize / sizeof(lv::MainVertex));//((std::istreambuf_iterator<char>(vertFile)), std::istreambuf_iterator<char>());
+            //std::ifstream vertFile(vertDataFilename.c_str(), std::ios::in | std::ios::binary);
+            //size_t vertSize = std::filesystem::file_size(vertDataFilename);
+            //char* vertData = (char*)malloc(vertSize);
+            //vertFile.read(vertData, vertSize);
+            //void* vertData;
+            //size_t vertSize;
+            //lv::loadRawBinary(vertDataFilename.c_str(), &vertData, &vertSize);
 
-            std::string indDataFilename = component["indDataFilename"];
+            //std::vector<lv::MainVertex> vertices((lv::MainVertex*)vertData, (lv::MainVertex*)vertData + vertSize / sizeof(lv::MainVertex));//((std::istreambuf_iterator<char>(vertFile)), std::istreambuf_iterator<char>());
+
             //std::string indStr = lv::readFile(indDataFilename.c_str());
             //const char* indChar = indStr.c_str();
-            std::ifstream indFile(indDataFilename.c_str(), std::ios::in | std::ios::binary);
-            size_t indSize = std::filesystem::file_size(indDataFilename);
-            char* indData = (char*)malloc(indSize);
-            indFile.read(indData, indSize);
+            //std::ifstream indFile(indDataFilename.c_str(), std::ios::in | std::ios::binary);
+            //size_t indSize = std::filesystem::file_size(indDataFilename);
+            //char* indData = (char*)malloc(indSize);
+            //indFile.read(indData, indSize);
+            //void* indData;
+            //size_t indSize;
+            //lv::loadRawBinary(indDataFilename.c_str(), &indData, &indSize);
 
-            std::vector<unsigned int> indices((unsigned int*)indData, (unsigned int*)indData + indSize / sizeof(unsigned int));//((unsigned int*)indChar, (unsigned int*)indChar + strlen(indChar) * sizeof(char));
+            //std::vector<uint32_t> indices((uint32_t*)indData, (uint32_t*)indData + indSize / sizeof(uint32_t));//((unsigned int*)indChar, (unsigned int*)indChar + strlen(indChar) * sizeof(char));
 
             /*
             if ((int)entity == 1) {
@@ -202,20 +210,26 @@ void Scene::loadEntity(entt::entity entity, nh::json& savedEntity) {
             }
             */
 
-            meshComponent.init(vertices, indices);
+            //meshComponent.init(vertices, indices);
 
-            for (uint16_t texIndex = 0; texIndex < 2; texIndex++) {
+            std::thread* thread = new std::thread([&](){
+                std::string vertDataFilename = component["vertDataFilename"];
+                std::string indDataFilename = component["indDataFilename"];
+                meshComponent.loadFromFile(vertDataFilename.c_str(), indDataFilename.c_str());
+            });
+            thread->join(); //TODO: make this multithreaded
+
+            for (uint16_t texIndex = 0; texIndex < LV_MESH_TEXTURE_COUNT; texIndex++) {
                 std::string texIndexStr = std::to_string(texIndex);
-                lv::Texture* texture = nullptr;
                 if (component["textures"].contains(texIndexStr)) {
                     std::string filename = component["textures"][texIndexStr]["filename"];
                     //std::cout << filename << std::endl;
-                    texture = lv::MeshComponent::loadTextureFromFile(filename.c_str());
+                    lv::Texture* texture = lv::MeshComponent::loadTextureFromFile(filename.c_str());
+                    meshComponent.setTexture(texture, texIndex);
                 }
-                meshComponent.addTexture(texture, texIndex);
             }
 #ifdef LV_BACKEND_VULKAN
-            meshComponent.descriptorSet->init();
+            meshComponent.initDescriptorSet();
 #endif
         }
         //Material component
@@ -260,6 +274,32 @@ void Scene::loadEntity(entt::entity entity, nh::json& savedEntity) {
             if (cameraComponent.active) {
                 primaryCameraEntity = entity;
             }
+        }
+        //Sphere collider
+        if (componentName == SPHERE_COLLIDER_COMPONENT_NAME) {
+            lv::SphereColliderComponent& sphereColliderComponent = editorRegistry.emplace<lv::SphereColliderComponent>(entity);
+            auto& component = savedEntity[SPHERE_COLLIDER_COMPONENT_NAME];
+
+            sphereColliderComponent.radius = component["radius"];
+        }
+        //Box collider
+        if (componentName == BOX_COLLIDER_COMPONENT_NAME) {
+            lv::BoxColliderComponent& boxColliderComponent = editorRegistry.emplace<lv::BoxColliderComponent>(entity);
+            auto& component = savedEntity[BOX_COLLIDER_COMPONENT_NAME];
+
+            boxColliderComponent.scale.x = component["scale"]["x"];
+            boxColliderComponent.scale.y = component["scale"]["y"];
+            boxColliderComponent.scale.z = component["scale"]["z"];
+        }
+        //Rigid body
+        if (componentName == RIGID_BODY_COMPONENT_NAME) {
+            lv::RigidBodyComponent& rigidBodyComponent = editorRegistry.emplace<lv::RigidBodyComponent>(entity, physicsWorld);
+            auto& component = savedEntity[RIGID_BODY_COMPONENT_NAME];
+
+            rigidBodyComponent.mass = component["mass"];
+            rigidBodyComponent.restitution = component["restitution"];
+            rigidBodyComponent.friction = component["friction"];
+            rigidBodyComponent.syncTransform = component["syncTransform"];
         }
 
         //Loading child entities
@@ -330,8 +370,10 @@ void Scene::saveEntity(entt::entity entity, nh::json& savedEntity) {
         lv::MeshComponent& meshComponent = editorRegistry.get<lv::MeshComponent>(entity);
         auto& component = savedEntity[MESH_COMPONENT_NAME];
 
-        for (uint16_t i = 0; i < meshComponent.texturesToSave.size(); i++) {
-            component["textures"][std::to_string(meshComponent.texturesToSave[i].second)]["filename"] = meshComponent.texturesToSave[i].first->filename;
+        for (uint16_t i = 0; i < LV_MESH_TEXTURE_COUNT; i++) {
+            lv::Texture* texture = meshComponent.textures[i];
+            if (texture->filename != "")
+                component["textures"][std::to_string(i)]["filename"] = texture->filename;
         }
 
         //component["vertices"] = meshComponent.vertices;
@@ -356,15 +398,17 @@ void Scene::saveEntity(entt::entity entity, nh::json& savedEntity) {
         */
         std::string vertDataFilename = Scene::meshDataDir + "/mesh" + std::to_string(meshDataFilenameIndex) + "_vert";
         component["vertDataFilename"] = vertDataFilename;
-        std::ofstream vertDataOut(vertDataFilename.c_str(), std::ios::out | std::ios::binary);
-        vertDataOut.write((char*)meshComponent.vertices.data(), meshComponent.vertices.size() * sizeof(lv::MainVertex));
+        //std::ofstream vertDataOut(vertDataFilename.c_str(), std::ios::out | std::ios::binary);
+        //vertDataOut.write((char*)meshComponent.vertices.data(), meshComponent.vertices.size() * sizeof(lv::MainVertex));
+        lv::dumpRawBinary(vertDataFilename.c_str(), meshComponent.vertices.data(), meshComponent.vertices.size() * sizeof(lv::MainVertex));
         //vertDataOut << meshComponent.vertices.data() << std::endl;
         //std::cout << vertDataFilename << std::endl;
 
         std::string indDataFilename = Scene::meshDataDir + "/mesh" + std::to_string(meshDataFilenameIndex) + "_ind";
         component["indDataFilename"] = indDataFilename;
-        std::ofstream indDataOut(indDataFilename.c_str(), std::ios::out | std::ios::binary);
-        indDataOut.write((char*)meshComponent.indices.data(), meshComponent.indices.size() * sizeof(unsigned int));
+        //std::ofstream indDataOut(indDataFilename.c_str(), std::ios::out | std::ios::binary);
+        //indDataOut.write((char*)meshComponent.indices.data(), meshComponent.indices.size() * sizeof(unsigned int));
+        lv::dumpRawBinary(indDataFilename.c_str(), meshComponent.indices.data(), meshComponent.indices.size() * sizeof(unsigned int));
         //indDataOut << meshComponent.indices.data() << std::endl;
 
         /*
@@ -411,6 +455,32 @@ void Scene::saveEntity(entt::entity entity, nh::json& savedEntity) {
 
         component["active"] = cameraComponent.active;
     }
+    //Sphere collider
+    if (editorRegistry.all_of<lv::SphereColliderComponent>(entity)) {
+        lv::SphereColliderComponent& sphereColliderComponent = editorRegistry.get<lv::SphereColliderComponent>(entity);
+        auto& component = savedEntity[SPHERE_COLLIDER_COMPONENT_NAME];
+
+        component["radius"] = sphereColliderComponent.radius;
+    }
+    //Box collider
+    if (editorRegistry.all_of<lv::BoxColliderComponent>(entity)) {
+        lv::BoxColliderComponent& boxColliderComponent = editorRegistry.get<lv::BoxColliderComponent>(entity);
+        auto& component = savedEntity[BOX_COLLIDER_COMPONENT_NAME];
+
+        component["scale"]["x"] = boxColliderComponent.scale.x;
+        component["scale"]["y"] = boxColliderComponent.scale.y;
+        component["scale"]["z"] = boxColliderComponent.scale.z;
+    }
+    //Rigid body
+    if (editorRegistry.all_of<lv::RigidBodyComponent>(entity)) {
+        lv::RigidBodyComponent& rigidBodyComponent = editorRegistry.get<lv::RigidBodyComponent>(entity);
+        auto& component = savedEntity[RIGID_BODY_COMPONENT_NAME];
+
+        component["mass"] = rigidBodyComponent.mass;
+        component["restitution"] = rigidBodyComponent.restitution;
+        component["friction"] = rigidBodyComponent.friction;
+        component["syncTransform"] = rigidBodyComponent.syncTransform;
+    }
 
     //Saving child entities
     auto& childs = editorRegistry.get<lv::NodeComponent>(entity).childs;
@@ -452,10 +522,10 @@ void Scene::changeState(SceneState newState) {
             for (auto& entity : view) {
                 if (runtimeRegistry.all_of<lv::ColliderComponent>(entity)) {
                     runtimeRegistry.get<lv::ColliderComponent>(entity).destroy();
-                }
 
-                if (runtimeRegistry.all_of<lv::RigidBodyComponent>(entity)) {
-                    runtimeRegistry.get<lv::RigidBodyComponent>(entity).destroy();
+                    if (runtimeRegistry.all_of<lv::RigidBodyComponent>(entity)) {
+                        runtimeRegistry.get<lv::RigidBodyComponent>(entity).destroy();
+                    }
                 }
 
                 runtimeRegistry.destroy(entity);
@@ -514,10 +584,21 @@ void Scene::changeState(SceneState newState) {
                     runtimeEntity.addComponent<lv::RigidBodyComponent>(editorEntity.getComponent<lv::RigidBodyComponent>());
                 }
 
-                if (editorEntity.hasComponent<lv::ColliderComponent>()) {
-                    lv::ColliderComponent& colliderComponent = runtimeEntity.addComponent<lv::ColliderComponent>(editorEntity.getComponent<lv::ColliderComponent>());
-                    colliderComponent.init();
-                    runtimeEntity.getComponent<lv::RigidBodyComponent>().init(colliderComponent);
+                lv::ColliderComponent* colliderComponent = nullptr;
+                if (editorEntity.hasComponent<lv::SphereColliderComponent>()) {
+                    colliderComponent = &runtimeEntity.addComponent<lv::SphereColliderComponent>(editorEntity.getComponent<lv::SphereColliderComponent>());
+                }
+                if (editorEntity.hasComponent<lv::BoxColliderComponent>()) {
+                    colliderComponent = &runtimeEntity.addComponent<lv::BoxColliderComponent>(editorEntity.getComponent<lv::BoxColliderComponent>());
+                }
+
+                if (runtimeEntity.hasComponent<lv::TransformComponent>()) {
+                    if (colliderComponent != nullptr) {
+                        colliderComponent->init();
+                        lv::TransformComponent& transformComponent = runtimeEntity.getComponent<lv::TransformComponent>();
+                        if (runtimeEntity.hasComponent<lv::RigidBodyComponent>())
+                            runtimeEntity.getComponent<lv::RigidBodyComponent>().init(*colliderComponent, transformComponent.position, transformComponent.rotation);
+                    }
                 }
             }
 
@@ -556,16 +637,41 @@ void Scene::update(float dt) {
                 scriptComponent.entity->update(dt);
         }
 
-        auto view2 = runtimeRegistry.view<lv::ColliderComponent, lv::RigidBodyComponent, lv::TransformComponent>();
-        for (auto& entity : view) {
-            lv::TransformComponent& transformComponent = runtimeRegistry.get<lv::TransformComponent>(entity);
+        auto view2 = runtimeRegistry.view<lv::RigidBodyComponent, lv::TransformComponent>();
+        for (auto& entity : view2) {
             lv::RigidBodyComponent& rigidBodyComponent = runtimeRegistry.get<lv::RigidBodyComponent>(entity);
+            if (rigidBodyComponent.syncTransform) {
+                if (runtimeRegistry.any_of<lv::SphereColliderComponent, lv::BoxColliderComponent>(entity)) {
+                    lv::TransformComponent& transformComponent = runtimeRegistry.get<lv::TransformComponent>(entity);
 
-            rigidBodyComponent.rigidBody->;
+                    btTransform transform;
+                    rigidBodyComponent.motionState->getWorldTransform(transform);
+                    transform.setOrigin(btVector3(transformComponent.position.x, transformComponent.position.y, transformComponent.position.z));
+                    //rigidBodyComponent.setOrigin(transformComponent.position);
+                    rigidBodyComponent.setRotation(transformComponent.rotation);
+                }
+            }
         }
 
         //TODO: add option to change how many steps should be made
         physicsWorld.world->stepSimulation(dt, 1);
+
+        for (auto& entity : view2) {
+            lv::RigidBodyComponent& rigidBodyComponent = runtimeRegistry.get<lv::RigidBodyComponent>(entity);
+            if (rigidBodyComponent.syncTransform) {
+                if (runtimeRegistry.any_of<lv::SphereColliderComponent, lv::BoxColliderComponent>(entity)) {
+                    lv::TransformComponent& transformComponent = runtimeRegistry.get<lv::TransformComponent>(entity);
+
+                    btTransform transform;
+                    rigidBodyComponent.motionState->getWorldTransform(transform);
+                    btVector3& position = transform.getOrigin();
+                    //rigidBodyComponent.setOrigin(glm::vec3(0.0f));
+                    transformComponent.position = glm::vec3(position.x(), position.y(), position.z());
+                    //rigidBodyComponent.setRotation(glm::vec3(0.0f));
+                    rigidBodyComponent.getRotation(transformComponent.rotation);
+                }
+            }
+        }
     }
 }
 

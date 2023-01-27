@@ -1,8 +1,10 @@
 #include "editor.hpp"
 
-#include "../math/math.hpp"
+#include "lvutils/math/math.hpp"
 
 #include "lvutils/scripting/script_manager.hpp"
+
+//#include "lvutils/physics/rigid_body.hpp"
 
 Editor* g_editor = nullptr;
 
@@ -134,7 +136,7 @@ void Editor::newFrame() {
 #ifdef LV_BACKEND_VULKAN
 	ImGui_ImplVulkan_NewFrame();
 #elif defined LV_BACKEND_METAL
-    ImGui_ImplMetal_NewFrame(lv::g_swapChain->activeFramebuffer->renderPasses[fmin(lv::g_swapChain->crntFrame, lv::g_swapChain->activeFramebuffer->frameCount - 1)]);
+    ImGui_ImplMetal_NewFrame(lv::g_swapChain->activeRenderPasses[fmin(lv::g_swapChain->crntFrame, lv::g_swapChain->activeRenderPasses.size() - 1)]);
 #endif
 	ImGui_ImplLvnd_NewFrame();
 
@@ -147,7 +149,7 @@ void Editor::render() {
 #ifdef LV_BACKEND_VULKAN
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), lv::g_swapChain->getActiveCommandBuffer());
 #elif defined LV_BACKEND_METAL
-    ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), lv::g_swapChain->activeFramebuffer->commandBuffers[fmin(lv::g_swapChain->crntFrame, lv::g_swapChain->activeFramebuffer->frameCount - 1)], lv::g_swapChain->activeFramebuffer->encoder);
+    ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), lv::g_swapChain->getActiveCommandBuffer(), lv::g_swapChain->activeRenderEncoder);
 #endif
     //lv::g_swapChain->activeFramebuffer->encoder->popDebugGroup();
 }
@@ -160,7 +162,8 @@ void Editor::createViewportSet(
 #endif
 ) {
 #ifdef LV_BACKEND_VULKAN
-  	for (uint8_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    viewportSets.resize(lv::g_swapChain->maxFramesInFlight);
+  	for (uint8_t i = 0; i < lv::g_swapChain->maxFramesInFlight; i++)
 		viewportSets[i] = createDescriptorSet(viewportImageViews[i], viewportSampler);
 #elif defined LV_BACKEND_METAL
     viewportSets = viewportImages;
@@ -387,7 +390,7 @@ void Editor::createViewport(const char* title, ViewportType viewportType) {
 
                     auto& transformComponent = selectedEntity.getComponent<lv::TransformComponent>();
 
-                    ImGuizmo::Manipulate(glm::value_ptr(g_game->scene().editorCamera.view), glm::value_ptr(g_game->scene().editorCamera.projection), gizmosType, ImGuizmo::LOCAL, glm::value_ptr(transformComponent.model.model));
+                    ImGuizmo::Manipulate(glm::value_ptr(g_game->scene().camera->view), glm::value_ptr(g_game->scene().camera->projection), gizmosType, ImGuizmo::LOCAL, glm::value_ptr(transformComponent.model.model));
 
                     if (ImGui::IsWindowFocused() && ImGuizmo::IsUsing()) {
                         glm::mat4 localModel = transformComponent.model.model;
@@ -458,9 +461,11 @@ void Editor::createPropertiesPanel() {
     ImGui::Begin("Entity");
 
     if (selectedEntity.isValid()) {
-        std::string buffer = std::string(selectedEntity.getComponent<lv::TagComponent>().name);
+        lv::TagComponent& tagComponent = selectedEntity.getComponent<lv::TagComponent>();
+        lv::NodeComponent& nodeComponent = selectedEntity.getComponent<lv::NodeComponent>();
+        std::string buffer = std::string(tagComponent.name);
         if (ImGui::InputText("Tag", &buffer))
-            selectedEntity.getComponent<lv::TagComponent>().name = buffer;
+            tagComponent.name = buffer;
 
         //std::cout << entity.name << " : "<< buffer << std::endl;
         //Transform
@@ -486,29 +491,36 @@ void Editor::createPropertiesPanel() {
             if (opened) {
                 auto& meshComponent = selectedEntity.getComponent<lv::MeshComponent>();
 
-                //TODO: add texture picking
-                
-                /*
-                if (!modelComponent.loaded) {
-                    if (ImGui::Button("Load model")) {
-                        //ImGuiFileDialog::Instance()->OpenDialog("ModelFileDialog", "Choose Model file", ".obj,.gltf,.fbx,.blend", "No file selected");
-                        std::string filePathName = getFileDialogResult("ModelFileDialog");
+                for (uint8_t i = 0; i < LV_MESH_TEXTURE_COUNT; i++) {
+                    ImGui::Button("O");
+                    if (ImGui::BeginDragDropTarget()) {
+                        const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(ASSET_DRAG_DROP_PAYLOAD_ID);
+                        if (payload) {
+                            std::string itemPath((const char*)payload->Data);
+                            std::cout << itemPath << std::endl;
 
-                        if (filePathName != "") {
-                            std::cout << "Loading model '" << filePathName << "'" << std::endl;
+                            std::string extension = std::filesystem::path(itemPath).extension();
+                            std::cout << extension << std::endl;
 
-                            selectedEntity.getComponent<lv::ModelComponent>().load(filePathName.c_str());
+                            /*
+                            if (extension == ".json") {
+                                App::g_application.addScene();
+                                App::g_application.scenes[App::g_application.scenes.size() - 1].filename = itemPath;
+                                App::g_application.changeScene(App::g_application.scenes.size() - 1);
+                            }
+                            */
+                            if (extension == ".png" || extension == ".jpg" || extension == ".jpeg") {
+                                meshComponent.setTexture(lv::MeshComponent::loadTextureFromFile(itemPath.c_str()), i);
+#ifdef LV_BACKEND_VULKAN
+                                meshComponent.destroyDescriptorSet();
+                                meshComponent.initDescriptorSet();
+#endif
+                            }
                         }
+
+                        ImGui::EndDragDropTarget();
                     }
-                } else {
-                    ImGui::Text("%s", modelComponent.directory.c_str());
                 }
-                ImGui::Checkbox("Flip UV coordinates", &modelComponent.flipUVs);
-                if (ImGui::Button("Remove component")) {
-                    modelComponent.destroy();
-                    selectedEntity.removeComponent<lv::ModelComponent>();
-                }
-                */
 
                 if (ImGui::Button("Remove component")) {
                     if (g_game->scene().state == SCENE_STATE_EDITOR) 
@@ -566,7 +578,7 @@ void Editor::createPropertiesPanel() {
         if (selectedEntity.hasComponent<lv::CameraComponent>()) {
             bool opened = treeNode(4, CAMERA_COMPONENT_NAME);
             if (opened) {
-                auto& cameraComponent = selectedEntity.getComponent<lv::CameraComponent>();
+                lv::CameraComponent& cameraComponent = selectedEntity.getComponent<lv::CameraComponent>();
                 
                 ImGui::DragFloat3("Position", &cameraComponent.position[0], 0.1f);
                 ImGui::SliderFloat3("Rotation", &cameraComponent.rotation[0], 0.0f, 360.0f);
@@ -587,6 +599,102 @@ void Editor::createPropertiesPanel() {
                     } else {
                         selectedEntity.removeComponent<lv::CameraComponent>();
                     }
+                }
+                
+                ImGui::TreePop();
+            }
+        }
+        //Sphere collider
+        if (selectedEntity.hasComponent<lv::SphereColliderComponent>()) {
+            bool opened = treeNode(5, SPHERE_COLLIDER_COMPONENT_NAME);
+            if (opened) {
+                lv::SphereColliderComponent& sphereColliderComponent = selectedEntity.getComponent<lv::SphereColliderComponent>();
+
+                ImGui::DragFloat("Radius", &sphereColliderComponent.radius, 0.001f, 0.0f);
+
+                /*
+                if (ImGui::Button("Adjust radius to mesh")) {
+                    float radius = 0.0f;
+                    glm::vec3 scale(1.0f);
+                    for (auto& child : nodeComponent) {
+                        lv::Entity childEntity(child, g_game->scene().registry);
+                        if (childEntity.hasComponent<lv::TransformComponent>())
+                            scale = childEntity.getComponent<lv::TransformComponent>().scale;
+                    }
+
+                    sphereColliderComponent.radius = radius * std::max(std::max(scale.x, scale.y), scale.z);
+                }
+                */
+
+                if (ImGui::Button("Remove component")) {
+                    if (g_game->scene().state == SCENE_STATE_RUNTIME)
+                        sphereColliderComponent.destroy();
+                    selectedEntity.removeComponent<lv::SphereColliderComponent>();
+                }
+                
+                ImGui::TreePop();
+            }
+        }
+        //Box collider
+        if (selectedEntity.hasComponent<lv::BoxColliderComponent>()) {
+            bool opened = treeNode(6, BOX_COLLIDER_COMPONENT_NAME);
+            if (opened) {
+                lv::BoxColliderComponent& boxColliderComponent = selectedEntity.getComponent<lv::BoxColliderComponent>();
+
+                ImGui::DragFloat3("Scale", (float*)&boxColliderComponent.scale, 0.001f, 0.0f);
+
+                /*
+                if (selectedEntity.hasComponent<lv::MeshComponent>()) {
+                    if (ImGui::Button("Adjust scale to mesh")) {
+                        lv::MeshComponent& meshComponent = selectedEntity.getComponent<lv::MeshComponent>();
+                        glm::vec3 scale(1.0f);
+                        if (selectedEntity.hasComponent<lv::TransformComponent>())
+                            scale = selectedEntity.getComponent<lv::TransformComponent>().scale;
+                        boxColliderComponent.scale = glm::vec3(meshComponent.maxX - meshComponent.minX,
+                                                               meshComponent.maxY - meshComponent.minY,
+                                                               meshComponent.maxZ - meshComponent.minZ) * scale;
+                    }
+                }
+                */
+
+                if (ImGui::Button("Remove component")) {
+                    if (g_game->scene().state == SCENE_STATE_RUNTIME)
+                        boxColliderComponent.destroy();
+                    selectedEntity.removeComponent<lv::BoxColliderComponent>();
+                }
+                
+                ImGui::TreePop();
+            }
+        }
+        //Rigid body
+        if (selectedEntity.hasComponent<lv::RigidBodyComponent>()) {
+            bool opened = treeNode(7, RIGID_BODY_COMPONENT_NAME);
+            if (opened) {
+                lv::RigidBodyComponent& rigidBodyComponent = selectedEntity.getComponent<lv::RigidBodyComponent>();
+
+                ImGui::DragFloat3("Origin", (float*)&rigidBodyComponent.origin, 0.001f, 0.0f);
+
+                ImGui::SliderFloat("Mass", &rigidBodyComponent.mass, 0.0f, 1000.0f);
+                if (rigidBodyComponent.rigidBody != nullptr)
+                    rigidBodyComponent.setMass();
+                //TODO: set other properties
+
+                ImGui::Checkbox("Sync transform", &rigidBodyComponent.syncTransform);
+
+                /*
+                if (selectedEntity.hasComponent<lv::MeshComponent>()) {
+                    if (ImGui::Button("Adjust origin to mesh")) {
+                        lv::MeshComponent& meshComponent = selectedEntity.getComponent<lv::MeshComponent>();
+                        rigidBodyComponent.origin = glm::vec3((meshComponent.minX + meshComponent.maxX) * 0.5f,
+                                                              (meshComponent.minY + meshComponent.maxY) * 0.5f,
+                                                              (meshComponent.minZ + meshComponent.maxZ) * 0.5f);
+                    }
+                }
+                */
+
+                if (ImGui::Button("Remove component")) {
+                    //TODO: destroy the rigid body
+                    selectedEntity.removeComponent<lv::RigidBodyComponent>();
                 }
                 
                 ImGui::TreePop();
@@ -627,6 +735,21 @@ void Editor::createPropertiesPanel() {
                 if (ImGui::MenuItem(CAMERA_COMPONENT_NAME)) {
                     if (!selectedEntity.hasComponent<lv::CameraComponent>()) {
                         selectedEntity.addComponent<lv::CameraComponent>();
+                    }
+                }
+                if (ImGui::MenuItem(SPHERE_COLLIDER_COMPONENT_NAME)) {
+                    if (!selectedEntity.hasComponent<lv::SphereColliderComponent>()) {
+                        selectedEntity.addComponent<lv::SphereColliderComponent>();
+                    }
+                }
+                if (ImGui::MenuItem(BOX_COLLIDER_COMPONENT_NAME)) {
+                    if (!selectedEntity.hasComponent<lv::BoxColliderComponent>()) {
+                        selectedEntity.addComponent<lv::BoxColliderComponent>();
+                    }
+                }
+                if (ImGui::MenuItem(RIGID_BODY_COMPONENT_NAME)) {
+                    if (!selectedEntity.hasComponent<lv::RigidBodyComponent>()) {
+                        selectedEntity.addComponent<lv::RigidBodyComponent>(g_game->scene().physicsWorld);
                     }
                 }
                 ImGui::EndPopup();
@@ -692,16 +815,16 @@ void Editor::createAssetsPanel() {
 
         if (!isDir) {
             if (ImGui::BeginDragDropSource()) {
-            const char* itemPath = path.c_str();
-            ImGui::SetDragDropPayload(ASSET_DRAG_DROP_PAYLOAD_ID, itemPath, (strlen(itemPath) + 1) * sizeof(const char*), ImGuiCond_Once);
-            ImGui::EndDragDropSource();
+                const char* itemPath = path.c_str();
+                ImGui::SetDragDropPayload(ASSET_DRAG_DROP_PAYLOAD_ID, itemPath, (strlen(itemPath) + 1) * sizeof(const char*), ImGuiCond_Once);
+                ImGui::EndDragDropSource();
             }
         }
 
         if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
             if (isDir) {
-            currentBrowseDir = path;
-            //refresh = true;
+                currentBrowseDir = path;
+                //refresh = true;
             }
         }
         ImGui::TextWrapped("%s", filename.c_str());

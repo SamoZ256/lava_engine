@@ -25,6 +25,12 @@
 
 #include "editor/editor.hpp"
 
+#ifdef LV_BACKEND_VULKAN
+#define GET_SHADER_FILENAME(name) "assets/shaders/vulkan/compiled/" name ".spv"
+#elif defined(LV_BACKEND_METAL)
+#define GET_SHADER_FILENAME(name) "assets/shaders/metal/compiled/" name ".metallib"
+#endif
+
 //Callbacks
 void windowResizeCallback(LvndWindow* window, uint16_t width, uint16_t height);
 
@@ -54,12 +60,12 @@ void duplicateEntity();
 
 //Shadows
 #define SHADOW_MAP_SIZE 2048
-#define CASCADE_COUNT 4
-#define SHADOW_FAR_PLANE 100.0f
-#define SHADOW_FRAME_COUNT 4
+#define CASCADE_COUNT 3
+#define SHADOW_FAR_PLANE 64.0f
+//#define SHADOW_FRAME_COUNT 4
 
 //SSAO
-#define SSAO_NOISE_SIZE 8
+#define SSAO_NOISE_TEX_SIZE 8
 
 //Window
 #define SRC_WIDTH 1920
@@ -111,49 +117,43 @@ struct DeferredRenderPass {
 #endif
     lv::Framebuffer framebuffer;
 
-    /*
-    lv::Image positionDepthAttachment;
-    lv::ImageView positionDepthAttachmentView;
-    lv::Sampler positionDepthAttachmentSampler;
-    */
-
-    lv::Image normalRoughnessAttachment;
+    lv::Image normalRoughnessImage;
 #ifdef LV_BACKEND_VULKAN
-    lv::ImageView normalRoughnessAttachmentView;
+    lv::ImageView normalRoughnessImageView;
 #endif
-    lv::Sampler normalRoughnessAttachmentSampler;
+    lv::Sampler normalRoughnessSampler;
 
-    lv::Image albedoMetallicAttachment;
+    lv::Image albedoMetallicImage;
 #ifdef LV_BACKEND_VULKAN
-    lv::ImageView albedoMetallicAttachmentView;
+    lv::ImageView albedoMetallicImageView;
 #endif
-    lv::Sampler albedoMetallicAttachmentSampler;
+    lv::Sampler albedoMetallicSampler;
 
-    lv::Image depthAttachment;
+    lv::Image depthImage;
 #ifdef LV_BACKEND_VULKAN
-    lv::ImageView depthAttachmentView;
+    lv::ImageView depthImageView;
 #endif
-    lv::Sampler depthAttachmentSampler;
+    lv::Sampler depthSampler;
 
     //lv::DescriptorSet descriptorSet = lv::DescriptorSet(SHADER_TYPE_MAIN, 0);
 };
 
 #define SETUP_MAIN_0_DESCRIPTORS \
-mainDescriptorSet0.addBufferBinding(directLight.lightUniformBuffer.descriptorInfo(), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); \
-mainDescriptorSet0.addBufferBinding(mainVPUniformBuffer.descriptorInfo(), 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); \
-mainDescriptorSet0.addBufferBinding(mainShadowUniformBuffer.descriptorInfo(), 2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); \
-mainDescriptorSet0.addImageBinding(shadowRenderPass.depthAttachmentSampler.descriptorInfo(shadowRenderPass.depthAttachmentView), 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); \
+mainDescriptorSet0.addBinding(directLight.lightUniformBuffer.descriptorInfo(), 0); \
+mainDescriptorSet0.addBinding(mainVPUniformBuffer.descriptorInfo(), 1); \
+mainDescriptorSet0.addBinding(mainShadowUniformBuffer.descriptorInfo(), 2); \
+mainDescriptorSet0.addBinding(shadowRenderPass.depthSampler.descriptorInfo(shadowRenderPass.depthImageView), 3); \
 
 #define SETUP_MAIN_1_DESCRIPTORS \
-mainDescriptorSet1.addImageBinding(skylight.irradianceMapSampler.descriptorInfo(skylight.irradianceMapImageView), 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); \
-mainDescriptorSet1.addImageBinding(skylight.prefilteredMapSampler.descriptorInfo(skylight.prefilteredMapImageView), 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); \
-mainDescriptorSet1.addImageBinding(brdfLutTexture.sampler.descriptorInfo(brdfLutTexture.imageView), 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+mainDescriptorSet1.addBinding(skylight.irradianceMapSampler.descriptorInfo(skylight.irradianceMapImageView), 0); \
+mainDescriptorSet1.addBinding(skylight.prefilteredMapSampler.descriptorInfo(skylight.prefilteredMapImageView), 1); \
+mainDescriptorSet1.addBinding(brdfLutTexture.sampler.descriptorInfo(brdfLutTexture.imageView), 2);
 
 #define SETUP_MAIN_2_DESCRIPTORS \
-mainDescriptorSet2.addImageBinding(deferredRenderPass.depthAttachmentSampler.descriptorInfo(deferredRenderPass.depthAttachmentView, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL), 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); \
-mainDescriptorSet2.addImageBinding(deferredRenderPass.normalRoughnessAttachmentSampler.descriptorInfo(deferredRenderPass.normalRoughnessAttachmentView), 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); \
-mainDescriptorSet2.addImageBinding(deferredRenderPass.albedoMetallicAttachmentSampler.descriptorInfo(deferredRenderPass.albedoMetallicAttachmentView), 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); \
-mainDescriptorSet2.addImageBinding(ssaoBlurRenderPass.colorAttachmentSampler.descriptorInfo(ssaoBlurRenderPass.colorAttachmentView), 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+mainDescriptorSet2.addBinding(deferredRenderPass.depthSampler.descriptorInfo(deferredRenderPass.depthImageView, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL), 0); \
+mainDescriptorSet2.addBinding(deferredRenderPass.normalRoughnessSampler.descriptorInfo(deferredRenderPass.normalRoughnessImageView), 1); \
+mainDescriptorSet2.addBinding(deferredRenderPass.albedoMetallicSampler.descriptorInfo(deferredRenderPass.albedoMetallicImageView), 2); \
+mainDescriptorSet2.addBinding(ssaoBlurRenderPass.colorSampler.descriptorInfo(ssaoBlurRenderPass.colorImageView), 3);
 
 //Shadow render pass
 struct ShadowRenderPass {
@@ -163,14 +163,14 @@ struct ShadowRenderPass {
     lv::Framebuffer framebuffer;//s[CASCADE_COUNT];
     //lv::ImageView depthAttachmentViews[CASCADE_COUNT];
 
-    lv::Image depthAttachment;
+    lv::Image depthImage;
 #ifdef LV_BACKEND_VULKAN
-    lv::ImageView depthAttachmentView;
+    lv::ImageView depthImageView;
     //lv::ImageView depthAttachmentViews[CASCADE_COUNT];
 #elif defined(LV_BACKEND_METAL)
     //lv::Image depthAttachmentViews[CASCADE_COUNT];
 #endif
-    lv::Sampler depthAttachmentSampler;
+    lv::Sampler depthSampler;
 };
 
 //SSAO render pass
@@ -180,17 +180,17 @@ struct SSAORenderPass {
 #endif
     lv::Framebuffer framebuffer;
 
-    lv::Image colorAttachment;
+    lv::Image colorImage;
 #ifdef LV_BACKEND_VULKAN
-    lv::ImageView colorAttachmentView;
+    lv::ImageView colorImageView;
 #endif
-    lv::Sampler colorAttachmentSampler;
+    lv::Sampler colorSampler;
 };
 
 #define SETUP_SSAO_DESCRIPTORS \
-ssaoDescriptorSet.addImageBinding(deferredRenderPass.depthAttachmentSampler.descriptorInfo(deferredRenderPass.depthAttachmentView, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL), 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); \
-ssaoDescriptorSet.addImageBinding(deferredRenderPass.normalRoughnessAttachmentSampler.descriptorInfo(deferredRenderPass.normalRoughnessAttachmentView), 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); \
-ssaoDescriptorSet.addImageBinding(ssaoNoiseTex.sampler.descriptorInfo(ssaoNoiseTex.imageView), 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+ssaoDescriptorSet.addBinding(deferredRenderPass.depthSampler.descriptorInfo(deferredRenderPass.depthImageView, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL), 0); /*disasmComputePass.outputColorAttachmentSampler.descriptorInfo(disasmComputePass.outputColorAttachmentView)*/ \
+ssaoDescriptorSet.addBinding(deferredRenderPass.normalRoughnessSampler.descriptorInfo(deferredRenderPass.normalRoughnessImageView), 1); \
+ssaoDescriptorSet.addBinding(ssaoNoiseTex.sampler.descriptorInfo(ssaoNoiseTex.imageView), 2);
 
 //SSAO blur render pass
 struct SSAOBlurRenderPass {
@@ -199,15 +199,15 @@ struct SSAOBlurRenderPass {
 #endif
     lv::Framebuffer framebuffer;
 
-    lv::Image colorAttachment;
+    lv::Image colorImage;
 #ifdef LV_BACKEND_VULKAN
-    lv::ImageView colorAttachmentView;
+    lv::ImageView colorImageView;
 #endif
-    lv::Sampler colorAttachmentSampler;
+    lv::Sampler colorSampler;
 };
 
 #define SETUP_SSAO_BLUR_DESCRIPTORS \
-ssaoBlurDescriptorSet.addImageBinding(ssaoRenderPass.colorAttachmentSampler.descriptorInfo(ssaoRenderPass.colorAttachmentView), 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);/* \
+ssaoBlurDescriptorSet.addBinding(ssaoRenderPass.colorSampler.descriptorInfo(ssaoRenderPass.colorImageView), 0);/* \
 ssaoBlurDescriptorSet.addImageBinding(deferredRenderPass.positionDepthAttachmentSampler.descriptorInfo(), 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);*/
 
 //Main render pass
@@ -217,19 +217,29 @@ struct MainRenderPass {
 #endif
     lv::Framebuffer framebuffer;
 
-    lv::Image colorAttachment;
+    lv::Image colorImage;
 #ifdef LV_BACKEND_VULKAN
-    lv::ImageView colorAttachmentView;
+    lv::ImageView colorImageView;
 #endif
-    lv::Sampler colorAttachmentSampler;
+    lv::Sampler colorSampler;
 
     //lv::DescriptorSet descriptorSet = lv::DescriptorSet(SHADER_TYPE_HDR, 0);
 };
 
 #define SETUP_HDR_DESCRIPTORS \
-hdrDescriptorSet.addImageBinding(mainRenderPass.colorAttachmentSampler.descriptorInfo(mainRenderPass.colorAttachmentView), 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);/* \
+hdrDescriptorSet.addBinding(mainRenderPass.colorSampler.descriptorInfo(mainRenderPass.colorImageView), 0);/* \
 hdrDescriptorSet.addImageBinding(deferredRenderPass.depthAttachmentSampler.descriptorInfo(), 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); \
 hdrDescriptorSet.addImageBinding(deferredRenderPass.normalRoughnessAttachmentSampler.descriptorInfo(), 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);*/
+
+/*
+struct DisasmComputePass {
+    lv::Image outputColorAttachment;
+#ifdef LV_BACKEND_VULKAN
+    lv::ImageView outputColorAttachmentView;
+#endif
+    lv::Sampler outputColorAttachmentSampler;
+};
+*/
 
 /*
 std::vector<Vertex> vertices {
@@ -247,11 +257,12 @@ std::vector<uint32_t> indices {
 
 //Shadows
 const float cascadeLevels[CASCADE_COUNT] = {
-    SHADOW_FAR_PLANE * 0.08f, SHADOW_FAR_PLANE * 0.22f, SHADOW_FAR_PLANE * 0.5f, SHADOW_FAR_PLANE  
+    SHADOW_FAR_PLANE * 0.08f, SHADOW_FAR_PLANE * 0.22f, SHADOW_FAR_PLANE
 };
 
 std::vector<glm::mat4> shadowVPs;
 
+/*
 uint8_t shadowFrameCounter = 0;
 const uint8_t shadowRefreshFrames[CASCADE_COUNT] = {
     1, 2, 4, 4
@@ -260,6 +271,7 @@ const uint8_t shadowRefreshFrames[CASCADE_COUNT] = {
 const uint8_t shadowStartingFrames[CASCADE_COUNT] = {
     0, 0, 0, 2
 };
+*/
 
 //Time
 float lastTime = 0.0f;
@@ -314,7 +326,7 @@ int main() {
 #ifdef LV_BACKEND_VULKAN
     lv::InstanceCreateInfo instanceCreateInfo;
 	instanceCreateInfo.applicationName = "Lava Engine";
-	instanceCreateInfo.enableValidationLayers = false;
+	instanceCreateInfo.enableValidationLayers = true;
 	lv::Instance instance(instanceCreateInfo);
 
 	lv::DeviceCreateInfo deviceCreateInfo;
@@ -323,24 +335,29 @@ int main() {
 
 	lv::AllocatorCreateInfo allocatorCreateInfo;
 	lv::Allocator allocator(allocatorCreateInfo);
+#elif defined LV_BACKEND_METAL
+    lv::Device device;
+#endif
 
 	lv::SwapChainCreateInfo swapChainCreateInfo;
 	swapChainCreateInfo.window = window;
 	swapChainCreateInfo.vsyncEnabled = true;
+    swapChainCreateInfo.maxFramesInFlight = 3;
 	lv::SwapChain swapChain(swapChainCreateInfo);
 
+#ifdef LV_BACKEND_VULKAN
 	lv::DescriptorPoolCreateInfo descriptorPoolCreateInfo;
 	//descriptorManagerCreateInfo.pipelineLayoutCount = SHADER_COUNT;
 	descriptorPoolCreateInfo.poolSizes[VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER] = 64;
 	descriptorPoolCreateInfo.poolSizes[VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER] = 1024;
+	//descriptorPoolCreateInfo.poolSizes[VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE] = 2;
+	//descriptorPoolCreateInfo.poolSizes[VK_DESCRIPTOR_TYPE_STORAGE_IMAGE] = 2;
 	lv::DescriptorPool descriptorPool(descriptorPoolCreateInfo);
-#elif defined LV_BACKEND_METAL
-    lv::Device device;
-
-	lv::SwapChain swapChain(window);
 #endif
     
-    glm::i8vec3 neautralColor(127, 127, 127);
+    int8_t maxInt8 = std::numeric_limits<int8_t>::max();
+    //std::cout << "Max int8_t: " << (int)maxInt8 << std::endl;
+    glm::i8vec3 neautralColor(maxInt8, maxInt8, maxInt8);
     lv::MeshComponent::neautralTexture.width = 1;
     lv::MeshComponent::neautralTexture.height = 1;
     lv::MeshComponent::neautralTexture.textureData = &neautralColor;
@@ -430,6 +447,7 @@ int main() {
     mainLayout.descriptorSetLayouts[2].addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //SSAO
 
     //Point light shader
+    /*
     lv::PipelineLayout pointLightLayout;
     pointLightLayout.descriptorSetLayouts.resize(1);
 
@@ -438,6 +456,7 @@ int main() {
     pointLightLayout.descriptorSetLayouts[0].addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Depth
     pointLightLayout.descriptorSetLayouts[0].addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Normal roughness
     pointLightLayout.descriptorSetLayouts[0].addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Albedo metallic
+    */
 
     //HDR shader
     lv::PipelineLayout hdrLayout;
@@ -448,6 +467,15 @@ int main() {
 	//lv::GET_DESCRIPTOR_SET_LAYOUT(SHADER_TYPE_HDR, 0).addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT); //Normal roughness
 
     //descriptorManager.init();
+
+    //Disassemble depth shader
+    /*
+    lv::PipelineLayout disasmLayout;
+    disasmLayout.descriptorSetLayouts.resize(1);
+
+    disasmLayout.descriptorSetLayouts[0].addBinding(0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, LV_SHADER_STAGE_COMPUTE_BIT); //Input depth
+    disasmLayout.descriptorSetLayouts[0].addBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, LV_SHADER_STAGE_COMPUTE_BIT); //Output depth
+    */
 #endif
 
     //Render passes
@@ -464,59 +492,58 @@ int main() {
     deferredRenderPass.positionDepthAttachmentSampler.init(&deferredRenderPass.positionDepthAttachmentView);
     */
 
-    deferredRenderPass.normalRoughnessAttachment.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    deferredRenderPass.normalRoughnessAttachment.format = LV_FORMAT_RGBA16_SNORM;
+    deferredRenderPass.normalRoughnessImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    deferredRenderPass.normalRoughnessImage.format = LV_FORMAT_RGBA16_SNORM;
 #ifdef LV_BACKEND_VULKAN
-    deferredRenderPass.normalRoughnessAttachment.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	deferredRenderPass.normalRoughnessAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    deferredRenderPass.normalRoughnessImage.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	deferredRenderPass.normalRoughnessImage.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 #endif
-    deferredRenderPass.normalRoughnessAttachment.init(SRC_WIDTH, SRC_HEIGHT);
+    deferredRenderPass.normalRoughnessImage.init(SRC_WIDTH, SRC_HEIGHT);
 #ifdef LV_BACKEND_VULKAN
-    deferredRenderPass.normalRoughnessAttachmentView.init(&deferredRenderPass.normalRoughnessAttachment);
+    deferredRenderPass.normalRoughnessImageView.init(&deferredRenderPass.normalRoughnessImage);
 #endif
-    deferredRenderPass.normalRoughnessAttachmentSampler.init();
+    deferredRenderPass.normalRoughnessSampler.init();
 
-    deferredRenderPass.albedoMetallicAttachment.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    deferredRenderPass.albedoMetallicAttachment.format = LV_FORMAT_RGBA16_UNORM;
+    deferredRenderPass.albedoMetallicImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    deferredRenderPass.albedoMetallicImage.format = LV_FORMAT_RGBA16_UNORM;
 #ifdef LV_BACKEND_VULKAN
-    deferredRenderPass.albedoMetallicAttachment.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	deferredRenderPass.albedoMetallicAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    deferredRenderPass.albedoMetallicImage.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	deferredRenderPass.albedoMetallicImage.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 #endif
-    deferredRenderPass.albedoMetallicAttachment.init(SRC_WIDTH, SRC_HEIGHT);
+    deferredRenderPass.albedoMetallicImage.init(SRC_WIDTH, SRC_HEIGHT);
 #ifdef LV_BACKEND_VULKAN
-    deferredRenderPass.albedoMetallicAttachmentView.init(&deferredRenderPass.albedoMetallicAttachment);
+    deferredRenderPass.albedoMetallicImageView.init(&deferredRenderPass.albedoMetallicImage);
 #endif
-    deferredRenderPass.albedoMetallicAttachmentSampler.init();
+    deferredRenderPass.albedoMetallicSampler.init();
 
-    deferredRenderPass.depthAttachment.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    deferredRenderPass.depthAttachment.format = swapChain.depthFormat;
-    deferredRenderPass.depthAttachment.loadOp = LV_ATTACHMENT_LOAD_OP_CLEAR;
+    deferredRenderPass.depthImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    deferredRenderPass.depthImage.format = swapChain.depthFormat;
 #ifdef LV_BACKEND_VULKAN
-    deferredRenderPass.depthAttachment.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-	deferredRenderPass.depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    deferredRenderPass.depthImage.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+	deferredRenderPass.depthImage.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 #endif
-    deferredRenderPass.depthAttachment.init(SRC_WIDTH, SRC_HEIGHT);
+    deferredRenderPass.depthImage.init(SRC_WIDTH, SRC_HEIGHT);
 #ifdef LV_BACKEND_VULKAN
-    deferredRenderPass.depthAttachmentView.init(&deferredRenderPass.depthAttachment);
+    deferredRenderPass.depthImageView.init(&deferredRenderPass.depthImage);
 #endif
-    deferredRenderPass.depthAttachmentSampler.init();
+    deferredRenderPass.depthSampler.init();
 
     //deferredRenderPass.framebuffer.addColorAttachment({&deferredRenderPass.positionDepthAttachment, &deferredRenderPass.positionDepthAttachmentView, 0});
-    deferredRenderPass.framebuffer.addColorAttachment({&deferredRenderPass.normalRoughnessAttachment,
+    deferredRenderPass.framebuffer.addColorAttachment(&deferredRenderPass.normalRoughnessImage,
 #ifdef LV_BACKEND_VULKAN
-    &deferredRenderPass.normalRoughnessAttachmentView,
+    &deferredRenderPass.normalRoughnessImageView,
 #endif
-    0});
-    deferredRenderPass.framebuffer.addColorAttachment({&deferredRenderPass.albedoMetallicAttachment,
+    0);
+    deferredRenderPass.framebuffer.addColorAttachment(&deferredRenderPass.albedoMetallicImage,
 #ifdef LV_BACKEND_VULKAN
-    &deferredRenderPass.albedoMetallicAttachmentView,
+    &deferredRenderPass.albedoMetallicImageView,
 #endif
-    1});
-    deferredRenderPass.framebuffer.setDepthAttachment({&deferredRenderPass.depthAttachment,
+    1);
+    deferredRenderPass.framebuffer.setDepthAttachment(&deferredRenderPass.depthImage,
 #ifdef LV_BACKEND_VULKAN
-    &deferredRenderPass.depthAttachmentView,
+    &deferredRenderPass.depthImageView,
 #endif
-    2});
+    2, LV_ATTACHMENT_LOAD_OP_CLEAR);
 
 #ifdef LV_BACKEND_VULKAN
     deferredRenderPass.renderPass.init(deferredRenderPass.framebuffer.getAttachmentDescriptions());
@@ -529,35 +556,35 @@ int main() {
     );
 
 #ifdef LV_BACKEND_VULKAN
-	deferredRenderPass.normalRoughnessAttachment.transitionLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	deferredRenderPass.albedoMetallicAttachment.transitionLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	deferredRenderPass.depthAttachment.transitionLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+	deferredRenderPass.normalRoughnessImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	deferredRenderPass.albedoMetallicImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	deferredRenderPass.depthImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
 #endif
-
-    deferredRenderPass.depthAttachment.loadOp = LV_ATTACHMENT_LOAD_OP_LOAD;
 #pragma endregion DEFERRED_RENDER_PASS
 
     //Shadow render pass
 #pragma region SHADOW_RENDER_PASS
     ShadowRenderPass shadowRenderPass{};
-    shadowRenderPass.depthAttachment.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    shadowRenderPass.depthAttachment.format = swapChain.depthFormat;
-    shadowRenderPass.depthAttachment.loadOp = LV_ATTACHMENT_LOAD_OP_CLEAR;
-    shadowRenderPass.depthAttachment.layerCount = CASCADE_COUNT;
+    shadowRenderPass.depthImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    shadowRenderPass.depthImage.format = swapChain.depthFormat;
+    shadowRenderPass.depthImage.layerCount = CASCADE_COUNT;
 #ifdef LV_BACKEND_VULKAN
-    shadowRenderPass.depthAttachment.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-	shadowRenderPass.depthAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    shadowRenderPass.depthAttachmentView.viewType = LV_IMAGE_VIEW_TYPE_2D_ARRAY;
+    shadowRenderPass.depthImage.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+	shadowRenderPass.depthImage.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    shadowRenderPass.depthImageView.viewType = LV_IMAGE_VIEW_TYPE_2D_ARRAY;
 #elif defined LV_BACKEND_METAL
-	shadowRenderPass.depthAttachment.viewType = LV_IMAGE_VIEW_TYPE_2D_ARRAY;
-    shadowRenderPass.depthAttachment.storageMode = MTL::StorageModePrivate;
+	shadowRenderPass.depthImage.viewType = LV_IMAGE_VIEW_TYPE_2D_ARRAY;
+    shadowRenderPass.depthImage.storageMode = MTL::StorageModePrivate;
 #endif
     //shadowRenderPass.depthAttachment.flags |= VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT;
-    shadowRenderPass.depthAttachment.init(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+    shadowRenderPass.depthImage.init(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
 #ifdef LV_BACKEND_VULKAN
-    shadowRenderPass.depthAttachmentView.init(&shadowRenderPass.depthAttachment);
+    shadowRenderPass.depthImageView.init(&shadowRenderPass.depthImage);
 #endif
-    shadowRenderPass.depthAttachmentSampler.init();
+    shadowRenderPass.depthSampler.filter = LV_FILTER_LINEAR;
+    shadowRenderPass.depthSampler.compareEnable = LV_TRUE;
+    //shadowRenderPass.depthAttachmentSampler.compareOp = LV_COMPARE_OP_LESS;
+    shadowRenderPass.depthSampler.init();
 
     /*
     for (uint8_t i = 0; i < CASCADE_COUNT; i++) {
@@ -580,11 +607,11 @@ int main() {
     }
     */
 
-    shadowRenderPass.framebuffer.setDepthAttachment({&shadowRenderPass.depthAttachment,
+    shadowRenderPass.framebuffer.setDepthAttachment(&shadowRenderPass.depthImage,
 #ifdef LV_BACKEND_VULKAN
-    &shadowRenderPass.depthAttachmentView,
+    &shadowRenderPass.depthImageView,
 #endif
-    0});
+    0, LV_ATTACHMENT_LOAD_OP_CLEAR);
 
 #ifdef LV_BACKEND_VULKAN
     shadowRenderPass.renderPass.init(shadowRenderPass.framebuffer/*s[0]*/.getAttachmentDescriptions());
@@ -599,7 +626,7 @@ int main() {
     //}
 
 #ifdef LV_BACKEND_VULKAN
-	shadowRenderPass.depthAttachment.transitionLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	shadowRenderPass.depthImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 #endif
 
     /*
@@ -621,29 +648,32 @@ int main() {
     //SSAO render pass
 #pragma region SSAO_RENDER_PASS
     SSAORenderPass ssaoRenderPass{};
-    ssaoRenderPass.colorAttachment.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    ssaoRenderPass.colorAttachment.format = LV_FORMAT_R8_UNORM;
+    ssaoRenderPass.colorImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    ssaoRenderPass.colorImage.format = LV_FORMAT_R8_UNORM;
 #ifdef LV_BACKEND_VULKAN
-    ssaoRenderPass.colorAttachment.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    ssaoRenderPass.colorAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    ssaoRenderPass.colorImage.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    ssaoRenderPass.colorImage.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 #endif
-    ssaoRenderPass.colorAttachment.init(SRC_WIDTH, SRC_HEIGHT);
+    ssaoRenderPass.colorImage.init(SRC_WIDTH / 2, SRC_HEIGHT / 2);
 #ifdef LV_BACKEND_VULKAN
-    ssaoRenderPass.colorAttachmentView.init(&ssaoRenderPass.colorAttachment);
+    ssaoRenderPass.colorImageView.init(&ssaoRenderPass.colorImage);
 #endif
-    ssaoRenderPass.colorAttachmentSampler.init();
+    ssaoRenderPass.colorSampler.filter = LV_FILTER_LINEAR;
+    ssaoRenderPass.colorSampler.init();
 
-    ssaoRenderPass.framebuffer.addColorAttachment({&ssaoRenderPass.colorAttachment,
+    ssaoRenderPass.framebuffer.addColorAttachment(&ssaoRenderPass.colorImage,
 #ifdef LV_BACKEND_VULKAN
-    &ssaoRenderPass.colorAttachmentView,
+    &ssaoRenderPass.colorImageView,
 #endif
-    0});
+    0);
 
+    /*
     ssaoRenderPass.framebuffer.setDepthAttachment({&deferredRenderPass.depthAttachment,
 #ifdef LV_BACKEND_VULKAN
     &deferredRenderPass.depthAttachmentView,
 #endif
     1});
+    */
 
 #ifdef LV_BACKEND_VULKAN
     ssaoRenderPass.renderPass.init(ssaoRenderPass.framebuffer.getAttachmentDescriptions());
@@ -651,41 +681,41 @@ int main() {
 
     ssaoRenderPass.framebuffer.init(
 #ifdef LV_BACKEND_VULKAN
-        &ssaoRenderPass.renderPass, SRC_WIDTH, SRC_HEIGHT
+        &ssaoRenderPass.renderPass, SRC_WIDTH / 2, SRC_HEIGHT / 2
 #endif
     );
 
 #ifdef LV_BACKEND_VULKAN
-	ssaoRenderPass.colorAttachment.transitionLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	ssaoRenderPass.colorImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 #endif
 #pragma endregion SSAO_RENDER_PASS
 
     //SSAO blur render pass
 #pragma region SSAO_BLUR_RENDER_PASS
     SSAOBlurRenderPass ssaoBlurRenderPass{};
-    ssaoBlurRenderPass.colorAttachment.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    ssaoBlurRenderPass.colorAttachment.format = LV_FORMAT_R8_UNORM;
+    ssaoBlurRenderPass.colorImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    ssaoBlurRenderPass.colorImage.format = LV_FORMAT_R8_UNORM;
 #ifdef LV_BACKEND_VULKAN
-    ssaoBlurRenderPass.colorAttachment.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    ssaoBlurRenderPass.colorAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    ssaoBlurRenderPass.colorImage.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    ssaoBlurRenderPass.colorImage.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 #endif
-    ssaoBlurRenderPass.colorAttachment.init(SRC_WIDTH, SRC_HEIGHT);
+    ssaoBlurRenderPass.colorImage.init(SRC_WIDTH, SRC_HEIGHT);
 #ifdef LV_BACKEND_VULKAN
-    ssaoBlurRenderPass.colorAttachmentView.init(&ssaoBlurRenderPass.colorAttachment);
+    ssaoBlurRenderPass.colorImageView.init(&ssaoBlurRenderPass.colorImage);
 #endif
-    ssaoBlurRenderPass.colorAttachmentSampler.init();
+    ssaoBlurRenderPass.colorSampler.init();
 
-    ssaoBlurRenderPass.framebuffer.addColorAttachment({&ssaoBlurRenderPass.colorAttachment,
+    ssaoBlurRenderPass.framebuffer.addColorAttachment(&ssaoBlurRenderPass.colorImage,
 #ifdef LV_BACKEND_VULKAN
-    &ssaoBlurRenderPass.colorAttachmentView,
+    &ssaoBlurRenderPass.colorImageView,
 #endif
-    0});
+    0);
 
-    ssaoBlurRenderPass.framebuffer.setDepthAttachment({&deferredRenderPass.depthAttachment,
+    ssaoBlurRenderPass.framebuffer.setDepthAttachment(&deferredRenderPass.depthImage,
 #ifdef LV_BACKEND_VULKAN
-    &deferredRenderPass.depthAttachmentView,
+    &deferredRenderPass.depthImageView,
 #endif
-    1});
+    1, LV_ATTACHMENT_LOAD_OP_LOAD, LV_ATTACHMENT_STORE_OP_DONT_CARE);
 
 #ifdef LV_BACKEND_VULKAN
     ssaoBlurRenderPass.renderPass.init(ssaoBlurRenderPass.framebuffer.getAttachmentDescriptions());
@@ -698,39 +728,39 @@ int main() {
     );
 
 #ifdef LV_BACKEND_VULKAN
-	ssaoBlurRenderPass.colorAttachment.transitionLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	ssaoBlurRenderPass.colorImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 #endif
 #pragma endregion SSAO_BLUR_RENDER_PASS
 
     //Main render pass
 #pragma region MAIN_RENDER_PASS
     MainRenderPass mainRenderPass{};
-    mainRenderPass.colorAttachment.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    mainRenderPass.colorAttachment.format = LV_FORMAT_RGBA32_SFLOAT;
+    mainRenderPass.colorImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    mainRenderPass.colorImage.format = LV_FORMAT_RGBA32_SFLOAT;
 #ifdef LV_BACKEND_VULKAN
-    mainRenderPass.colorAttachment.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    mainRenderPass.colorAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    mainRenderPass.colorImage.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    mainRenderPass.colorImage.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 #endif
-    mainRenderPass.colorAttachment.init(SRC_WIDTH, SRC_HEIGHT);
+    mainRenderPass.colorImage.init(SRC_WIDTH, SRC_HEIGHT);
 #ifdef LV_BACKEND_VULKAN
-    mainRenderPass.colorAttachmentView.init(&mainRenderPass.colorAttachment);
+    mainRenderPass.colorImageView.init(&mainRenderPass.colorImage);
 #endif
-    mainRenderPass.colorAttachmentSampler.init();
+    mainRenderPass.colorSampler.init();
 
     //mainRenderPass.depthAttachment.usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     //mainRenderPass.depthAttachment.init(mainRenderPass.framebuffer.width, mainRenderPass.framebuffer.height, lv::g_swapChain.depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
 
-    mainRenderPass.framebuffer.addColorAttachment({&mainRenderPass.colorAttachment,
+    mainRenderPass.framebuffer.addColorAttachment(&mainRenderPass.colorImage,
 #ifdef LV_BACKEND_VULKAN
-    &mainRenderPass.colorAttachmentView,
+    &mainRenderPass.colorImageView,
 #endif
-    0});
+    0);
 
-    mainRenderPass.framebuffer.setDepthAttachment({&deferredRenderPass.depthAttachment,
+    mainRenderPass.framebuffer.setDepthAttachment(&deferredRenderPass.depthImage,
 #ifdef LV_BACKEND_VULKAN
-    &deferredRenderPass.depthAttachmentView,
+    &deferredRenderPass.depthImageView,
 #endif
-    1});
+    1, LV_ATTACHMENT_LOAD_OP_LOAD, LV_ATTACHMENT_STORE_OP_DONT_CARE);
     //mainRenderPass.framebuffer.setDepthAttachment({&deferredRenderPass.depthAttachment, &deferredRenderPass.depthAttachmentView, 1});
     //mainRenderPass.framebuffer.setDepthAttachment(&mainRenderPass.depthAttachment, 1);
 
@@ -745,30 +775,30 @@ int main() {
     );
 
 #ifdef LV_BACKEND_VULKAN
-	mainRenderPass.colorAttachment.transitionLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	mainRenderPass.colorImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 #endif
 #pragma endregion MAIN_RENDER_PASS
 
     //HDR render pass
 #pragma region HDR_RENDER_PASS
     MainRenderPass hdrRenderPass{};
-    hdrRenderPass.colorAttachment.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    hdrRenderPass.colorAttachment.format = LV_FORMAT_RGBA16_UNORM;
+    hdrRenderPass.colorImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    hdrRenderPass.colorImage.format = LV_FORMAT_RGBA16_UNORM;
 #ifdef LV_BACKEND_VULKAN
-    hdrRenderPass.colorAttachment.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    hdrRenderPass.colorAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    hdrRenderPass.colorImage.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    hdrRenderPass.colorImage.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 #endif
-    hdrRenderPass.colorAttachment.init(SRC_WIDTH, SRC_HEIGHT);
+    hdrRenderPass.colorImage.init(SRC_WIDTH, SRC_HEIGHT);
 #ifdef LV_BACKEND_VULKAN
-    hdrRenderPass.colorAttachmentView.init(&hdrRenderPass.colorAttachment);
+    hdrRenderPass.colorImageView.init(&hdrRenderPass.colorImage);
 #endif
-    hdrRenderPass.colorAttachmentSampler.init();
+    hdrRenderPass.colorSampler.init();
 
-    hdrRenderPass.framebuffer.addColorAttachment({&hdrRenderPass.colorAttachment,
+    hdrRenderPass.framebuffer.addColorAttachment(&hdrRenderPass.colorImage,
 #ifdef LV_BACKEND_VULKAN
-    &hdrRenderPass.colorAttachmentView,
+    &hdrRenderPass.colorImageView,
 #endif
-    0});
+    0);
 
 #ifdef LV_BACKEND_VULKAN
     hdrRenderPass.renderPass.init(hdrRenderPass.framebuffer.getAttachmentDescriptions());
@@ -781,11 +811,29 @@ int main() {
     );
 
 #ifdef LV_BACKEND_VULKAN
-	hdrRenderPass.colorAttachment.transitionLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	hdrRenderPass.colorImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 #endif
 #pragma endregion HDR_RENDER_PASS
 
-    //Shaders
+    //Disassemble depth compute pass
+    /*
+#pragma region DISASM_COMPUTE_PASS
+    DisasmComputePass disasmComputePass{};
+    disasmComputePass.outputColorAttachment.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_STORAGE_BIT;
+    disasmComputePass.outputColorAttachment.format = LV_FORMAT_R16_SNORM;
+#ifdef LV_BACKEND_VULKAN
+    disasmComputePass.outputColorAttachment.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    disasmComputePass.outputColorAttachment.finalLayout = VK_IMAGE_LAYOUT_GENERAL;
+#endif
+    disasmComputePass.outputColorAttachment.init(SRC_WIDTH, SRC_HEIGHT);
+#ifdef LV_BACKEND_VULKAN
+    disasmComputePass.outputColorAttachmentView.init(&disasmComputePass.outputColorAttachment);
+#endif
+    disasmComputePass.outputColorAttachmentSampler.init();
+#pragma endregion DISASM_COMPUTE_PASS
+    */
+
+    //Graphics pipelines
 
     // *************** Equirectangular to cubemap shader ***************
 #pragma region EQUIRECTANGULAR_TO_CUBE_SHADER
@@ -802,10 +850,8 @@ int main() {
     lv::ShaderModuleCreateInfo vertCubemapCreateInfo{};
 #ifdef LV_BACKEND_VULKAN
     vertCubemapCreateInfo.shaderType = LV_SHADER_STAGE_VERTEX_BIT;
-    vertCubemapCreateInfo.filename = "assets/shaders/vulkan/compiled/vertex/cubemap.spv";
-#elif defined LV_BACKEND_METAL
-    vertCubemapCreateInfo.filename = "assets/shaders/metal/compiled/vertex/cubemap.metallib";
 #endif
+    vertCubemapCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("vertex/cubemap"));
 
     lv::ShaderModule vertCubemapModule(vertCubemapCreateInfo);
 
@@ -813,10 +859,8 @@ int main() {
     lv::ShaderModuleCreateInfo fragEquiToCubeCreateInfo{};
 #ifdef LV_BACKEND_VULKAN
     fragEquiToCubeCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-    fragEquiToCubeCreateInfo.filename = "assets/shaders/vulkan/compiled/fragment/equi_to_cube.spv";
-#elif defined LV_BACKEND_METAL
-    fragEquiToCubeCreateInfo.filename = "assets/shaders/metal/compiled/fragment/equi_to_cube.metallib";
 #endif
+    fragEquiToCubeCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/equi_to_cube"));
 
     lv::ShaderModule fragEquiToCubeModule(fragEquiToCubeCreateInfo);
     
@@ -848,10 +892,8 @@ int main() {
     lv::ShaderModuleCreateInfo fragIrradianceCreateInfo{};
 #ifdef LV_BACKEND_VULKAN
     fragIrradianceCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-    fragIrradianceCreateInfo.filename = "assets/shaders/vulkan/compiled/fragment/irradiance.spv";
-#elif defined LV_BACKEND_METAL
-    fragIrradianceCreateInfo.filename = "assets/shaders/metal/compiled/fragment/irradiance.metallib";
 #endif
+    fragIrradianceCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/irradiance"));
 
     lv::ShaderModule fragIrradianceModule(fragIrradianceCreateInfo);
     
@@ -865,9 +907,7 @@ int main() {
 #endif
 	//irradianceCreateInfo.renderPass = &mainRenderPass.renderPass;
 
-#ifdef LV_BACKEND_VULKAN
-    irradianceShaderCreateInfo.config.depthTest = LV_FALSE;
-#endif
+    irradianceShaderCreateInfo.config.depthTestEnable = LV_FALSE;
 #pragma endregion IRRADIANCE_SHADER
 
     // *************** Irradiance shader ***************
@@ -885,10 +925,8 @@ int main() {
     lv::ShaderModuleCreateInfo fragPrefilteredCreateInfo{};
 #ifdef LV_BACKEND_VULKAN
     fragPrefilteredCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-    fragPrefilteredCreateInfo.filename = "assets/shaders/vulkan/compiled/fragment/prefiltered.spv";
-#elif defined LV_BACKEND_METAL
-    fragPrefilteredCreateInfo.filename = "assets/shaders/metal/compiled/fragment/prefiltered.metallib";
 #endif
+    fragPrefilteredCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/prefiltered"));
 
     lv::ShaderModule fragPrefilteredModule(fragPrefilteredCreateInfo);
     
@@ -918,10 +956,8 @@ int main() {
     lv::ShaderModuleCreateInfo vertDeferredCreateInfo{};
 #ifdef LV_BACKEND_VULKAN
     vertDeferredCreateInfo.shaderType = LV_SHADER_STAGE_VERTEX_BIT;
-    vertDeferredCreateInfo.filename = "assets/shaders/vulkan/compiled/vertex/deferred.spv";
-#elif defined LV_BACKEND_METAL
-    vertDeferredCreateInfo.filename = "assets/shaders/metal/compiled/vertex/deferred.metallib";
 #endif
+    vertDeferredCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("vertex/deferred"));
 
     lv::ShaderModule vertDeferredModule(vertDeferredCreateInfo);
 
@@ -929,10 +965,8 @@ int main() {
     lv::ShaderModuleCreateInfo fragDeferredCreateInfo{};
 #ifdef LV_BACKEND_VULKAN
     fragDeferredCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-    fragDeferredCreateInfo.filename = "assets/shaders/vulkan/compiled/fragment/deferred.spv";
-#elif defined LV_BACKEND_METAL
-    fragDeferredCreateInfo.filename = "assets/shaders/metal/compiled/fragment/deferred.metallib";
 #endif
+    fragDeferredCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/deferred"));
 
     lv::ShaderModule fragDeferredModule(fragDeferredCreateInfo);
     
@@ -950,7 +984,7 @@ int main() {
     deferredGraphicsPipelineCreateInfo.vertexDescriptor = lv::MainVertex::getVertexDescriptor();
 
     deferredGraphicsPipelineCreateInfo.config.cullMode = LV_CULL_MODE_BACK_BIT;
-    deferredGraphicsPipelineCreateInfo.config.depthTest = LV_TRUE;
+    deferredGraphicsPipelineCreateInfo.config.depthTestEnable = LV_TRUE;
 
 	lv::GraphicsPipeline deferredGraphicsPipeline(deferredGraphicsPipelineCreateInfo);
 #pragma endregion DEFERRED_SHADER
@@ -970,10 +1004,8 @@ int main() {
     lv::ShaderModuleCreateInfo vertShadowCreateInfo{};
 #ifdef LV_BACKEND_VULKAN
     vertShadowCreateInfo.shaderType = LV_SHADER_STAGE_VERTEX_BIT;
-    vertShadowCreateInfo.filename = "assets/shaders/vulkan/compiled/vertex/shadow.spv";
-#elif defined LV_BACKEND_METAL
-    vertShadowCreateInfo.filename = "assets/shaders/metal/compiled/vertex/shadow.metallib";
 #endif
+    vertShadowCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("vertex/shadow"));
 
     lv::ShaderModule vertShadowModule(vertShadowCreateInfo);
 
@@ -981,10 +1013,8 @@ int main() {
     lv::ShaderModuleCreateInfo fragShadowCreateInfo{};
 #ifdef LV_BACKEND_VULKAN
     fragShadowCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-    fragShadowCreateInfo.filename = "assets/shaders/vulkan/compiled/fragment/shadow.spv";
-#elif defined LV_BACKEND_METAL
-    fragShadowCreateInfo.filename = "assets/shaders/metal/compiled/fragment/shadow.metallib";
 #endif
+    fragShadowCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/shadow"));
 
     lv::ShaderModule fragShadowModule(fragShadowCreateInfo);
     
@@ -1003,7 +1033,7 @@ int main() {
     shadowGraphicsPipelineCreateInfo.vertexDescriptor = lv::MainVertex::getVertexDescriptorShadows();
 
     shadowGraphicsPipelineCreateInfo.config.cullMode = LV_CULL_MODE_FRONT_BIT;
-    shadowGraphicsPipelineCreateInfo.config.depthTest = LV_TRUE;
+    shadowGraphicsPipelineCreateInfo.config.depthTestEnable = LV_TRUE;
 
 	lv::GraphicsPipeline shadowGraphicsPipeline(shadowGraphicsPipelineCreateInfo);
 #pragma endregion SHADOW_SHADER
@@ -1023,10 +1053,8 @@ int main() {
     lv::ShaderModuleCreateInfo vertTriangleCreateInfo{};
 #ifdef LV_BACKEND_VULKAN
     vertTriangleCreateInfo.shaderType = LV_SHADER_STAGE_VERTEX_BIT;
-    vertTriangleCreateInfo.filename = "assets/shaders/vulkan/compiled/vertex/triangle.spv";
-#elif defined LV_BACKEND_METAL
-    vertTriangleCreateInfo.filename = "assets/shaders/metal/compiled/vertex/triangle.metallib";
 #endif
+    vertTriangleCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("vertex/triangle"));
 
     lv::ShaderModule vertTriangleModule(vertTriangleCreateInfo);
 
@@ -1034,10 +1062,8 @@ int main() {
     lv::ShaderModuleCreateInfo fragSsaoCreateInfo{};
 #ifdef LV_BACKEND_VULKAN
     fragSsaoCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-    fragSsaoCreateInfo.filename = "assets/shaders/vulkan/compiled/fragment/ssao.spv";
-#elif defined LV_BACKEND_METAL
-    fragSsaoCreateInfo.filename = "assets/shaders/metal/compiled/fragment/ssao.metallib";
 #endif
+    fragSsaoCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/ssao"));
 
     lv::ShaderModule fragSsaoModule(fragSsaoCreateInfo);
     
@@ -1053,9 +1079,11 @@ int main() {
     ssaoGraphicsPipelineCreateInfo.framebuffer = &ssaoRenderPass.framebuffer;
 #endif
 
+    /*
     ssaoGraphicsPipelineCreateInfo.config.depthTest = LV_TRUE;
     ssaoGraphicsPipelineCreateInfo.config.depthWrite = LV_FALSE;
     ssaoGraphicsPipelineCreateInfo.config.depthOp = LV_COMPARE_OP_NOT_EQUAL;
+    */
 
 	lv::GraphicsPipeline ssaoGraphicsPipeline(ssaoGraphicsPipelineCreateInfo);
 #pragma endregion SSAO_SHADER
@@ -1070,10 +1098,8 @@ int main() {
     lv::ShaderModuleCreateInfo fragSsaoBlurCreateInfo{};
 #ifdef LV_BACKEND_VULKAN
     fragSsaoBlurCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-    fragSsaoBlurCreateInfo.filename = "assets/shaders/vulkan/compiled/fragment/blur.spv";
-#elif defined LV_BACKEND_METAL
-    fragSsaoBlurCreateInfo.filename = "assets/shaders/metal/compiled/fragment/blur.metallib";
 #endif
+    fragSsaoBlurCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/blur"));
 
     lv::ShaderModule fragSsaoBlurModule(fragSsaoBlurCreateInfo);
     
@@ -1089,8 +1115,8 @@ int main() {
     ssaoBlurGraphicsPipelineCreateInfo.framebuffer = &ssaoBlurRenderPass.framebuffer;
 #endif
 
-    ssaoBlurGraphicsPipelineCreateInfo.config.depthTest = LV_TRUE;
-    ssaoBlurGraphicsPipelineCreateInfo.config.depthWrite = LV_FALSE;
+    ssaoBlurGraphicsPipelineCreateInfo.config.depthTestEnable = LV_TRUE;
+    ssaoBlurGraphicsPipelineCreateInfo.config.depthWriteEnable = LV_FALSE;
     ssaoBlurGraphicsPipelineCreateInfo.config.depthOp = LV_COMPARE_OP_NOT_EQUAL;
 
 	lv::GraphicsPipeline ssaoBlurGraphicsPipeline(ssaoBlurGraphicsPipelineCreateInfo);
@@ -1111,10 +1137,8 @@ int main() {
     lv::ShaderModuleCreateInfo vertSkylightCreateInfo{};
 #ifdef LV_BACKEND_VULKAN
     vertSkylightCreateInfo.shaderType = LV_SHADER_STAGE_VERTEX_BIT;
-    vertSkylightCreateInfo.filename = "assets/shaders/vulkan/compiled/vertex/skylight.spv";
-#elif defined LV_BACKEND_METAL
-    vertSkylightCreateInfo.filename = "assets/shaders/metal/compiled/vertex/skylight.metallib";
 #endif
+    vertSkylightCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("vertex/skylight"));
 
     lv::ShaderModule vertSkylightModule(vertSkylightCreateInfo);
 
@@ -1122,10 +1146,8 @@ int main() {
     lv::ShaderModuleCreateInfo fragSkylightCreateInfo{};
 #ifdef LV_BACKEND_VULKAN
     fragSkylightCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-    fragSkylightCreateInfo.filename = "assets/shaders/vulkan/compiled/fragment/skylight.spv";
-#elif defined LV_BACKEND_METAL
-    fragSkylightCreateInfo.filename = "assets/shaders/metal/compiled/fragment/skylight.metallib";
 #endif
+    fragSkylightCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/skylight"));
 
     lv::ShaderModule fragSkylightModule(fragSkylightCreateInfo);
     
@@ -1143,7 +1165,7 @@ int main() {
 
     skylightGraphicsPipelineCreateInfo.vertexDescriptor = lv::Vertex3D::getVertexDescriptor();
 
-    skylightGraphicsPipelineCreateInfo.config.depthWrite = LV_FALSE;
+    skylightGraphicsPipelineCreateInfo.config.depthWriteEnable = LV_FALSE;
 
 	lv::GraphicsPipeline skylightGraphicsPipeline(skylightGraphicsPipelineCreateInfo);
 #pragma endregion SKYLIGHT_SHADER
@@ -1158,10 +1180,8 @@ int main() {
     lv::ShaderModuleCreateInfo fragMainCreateInfo{};
 #ifdef LV_BACKEND_VULKAN
     fragMainCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-    fragMainCreateInfo.filename = "assets/shaders/vulkan/compiled/fragment/main.spv";
-#elif defined LV_BACKEND_METAL
-    fragMainCreateInfo.filename = "assets/shaders/metal/compiled/fragment/main.metallib";
 #endif
+    fragMainCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/main"));
 
     lv::ShaderModule fragMainModule(fragMainCreateInfo);
     
@@ -1177,14 +1197,15 @@ int main() {
     mainGraphicsPipelineCreateInfo.framebuffer = &mainRenderPass.framebuffer;
 #endif
 
-    mainGraphicsPipelineCreateInfo.config.depthTest = LV_TRUE;
-    mainGraphicsPipelineCreateInfo.config.depthWrite = LV_FALSE;
+    mainGraphicsPipelineCreateInfo.config.depthTestEnable = LV_TRUE;
+    mainGraphicsPipelineCreateInfo.config.depthWriteEnable = LV_FALSE;
     mainGraphicsPipelineCreateInfo.config.depthOp = LV_COMPARE_OP_NOT_EQUAL;
 
 	lv::GraphicsPipeline mainGraphicsPipeline(mainGraphicsPipelineCreateInfo);
 #pragma endregion MAIN_SHADER
 
     // *************** Point light shader ***************
+    /*
 #pragma region POINT_LIGHT_SHADER
 #ifdef LV_BACKEND_VULKAN
     pointLightLayout.pushConstantRanges.resize(1);
@@ -1199,10 +1220,8 @@ int main() {
     lv::ShaderModuleCreateInfo vertPointLightCreateInfo{};
 #ifdef LV_BACKEND_VULKAN
     vertPointLightCreateInfo.shaderType = LV_SHADER_STAGE_VERTEX_BIT;
-    vertPointLightCreateInfo.filename = "assets/shaders/vulkan/compiled/vertex/point_light.spv";
-#elif defined LV_BACKEND_METAL
-    vertPointLightCreateInfo.filename = "assets/shaders/metal/compiled/vertex/point_light.metallib";
 #endif
+    vertPointLightCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("vertex/point_light"));
 
     lv::ShaderModule vertPointLightModule(vertPointLightCreateInfo);
 
@@ -1210,10 +1229,8 @@ int main() {
     lv::ShaderModuleCreateInfo fragPointLightCreateInfo{};
 #ifdef LV_BACKEND_VULKAN
     fragPointLightCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-    fragPointLightCreateInfo.filename = "assets/shaders/vulkan/compiled/fragment/point_light.spv";
-#elif defined LV_BACKEND_METAL
-    fragPointLightCreateInfo.filename = "assets/shaders/metal/compiled/fragment/point_light.metallib";
 #endif
+    fragPointLightCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/point_light"));
 
     lv::ShaderModule fragPointLightModule(fragPointLightCreateInfo);
     
@@ -1231,13 +1248,14 @@ int main() {
 
     pointLightGraphicsPipelineCreateInfo.vertexDescriptor = lv::Vertex3D::getVertexDescriptor();
 
-    pointLightGraphicsPipelineCreateInfo.config.depthTest = LV_TRUE;
-    pointLightGraphicsPipelineCreateInfo.config.depthWrite = LV_FALSE;
+    pointLightGraphicsPipelineCreateInfo.config.depthTestEnable = LV_TRUE;
+    pointLightGraphicsPipelineCreateInfo.config.depthWriteEnable = LV_FALSE;
     //pointLightGraphicsPipelineCreateInfo.config.depthOp = LV_COMPARE_OP_NOT_EQUAL;
     //TODO: configure the blending
 
 	lv::GraphicsPipeline pointLightGraphicsPipeline(pointLightGraphicsPipelineCreateInfo);
 #pragma endregion POINT_LIGHT_SHADER
+    */
 
     // *************** HDR shader ***************
 #pragma region HDR_SHADER
@@ -1256,10 +1274,8 @@ int main() {
     lv::ShaderModuleCreateInfo fragHdrCreateInfo{};
 #ifdef LV_BACKEND_VULKAN
     fragHdrCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-    fragHdrCreateInfo.filename = "assets/shaders/vulkan/compiled/fragment/hdr.spv";
-#elif defined LV_BACKEND_METAL
-    fragHdrCreateInfo.filename = "assets/shaders/metal/compiled/fragment/hdr.metallib";
 #endif
+    fragHdrCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/hdr"));
 
     lv::ShaderModule fragHdrModule(fragHdrCreateInfo);
     
@@ -1281,6 +1297,37 @@ int main() {
 	lv::GraphicsPipeline hdrGraphicsPipeline(hdrGraphicsPipelineCreateInfo);
 #pragma endregion HDR_SHADER
 
+    //Compute pipelines
+
+    // *************** Disassemble depth shader ***************
+    /*
+#pragma region DISASSEMBLE_DEPTH_SHADER
+#ifdef LV_BACKEND_VULKAN
+    disasmLayout.init();
+#endif
+
+    //Compute
+    lv::ShaderModuleCreateInfo compDisasmCreateInfo{};
+#ifdef LV_BACKEND_VULKAN
+    compDisasmCreateInfo.shaderType = LV_SHADER_STAGE_COMPUTE_BIT;
+#endif
+    compDisasmCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("compute/disassemble_depth"));
+
+    lv::ShaderModule compDisasmModule(compDisasmCreateInfo);
+
+    //Shader
+    lv::ComputePipelineCreateInfo disasmComputePipelineCreateInfo{};
+
+    disasmComputePipelineCreateInfo.computeShaderModule = &compDisasmModule;
+#ifdef LV_BACKEND_VULKAN
+    disasmComputePipelineCreateInfo.pipelineLayout = &disasmLayout;
+#endif
+
+    lv::ComputePipeline disasmComputePipeline(disasmComputePipelineCreateInfo);
+
+#pragma endregion DISASSEMBLE_DEPTH_SHADER
+    */
+
     //Light
     lv::DirectLight directLight;
     directLight.light.direction = glm::normalize(glm::vec3(2.0f, -4.0f, 1.0f));
@@ -1288,20 +1335,20 @@ int main() {
 #ifdef LV_BACKEND_VULKAN
     //Uniform buffers
     lv::UniformBuffer deferredVPUniformBuffer(sizeof(glm::mat4));
-    lv::UniformBuffer shadowVPUniformBuffers[CASCADE_COUNT] = { lv::UniformBuffer(sizeof(PCShadowVP)), lv::UniformBuffer(sizeof(PCShadowVP)), lv::UniformBuffer(sizeof(PCShadowVP)), lv::UniformBuffer(sizeof(PCShadowVP)) };
+    lv::UniformBuffer shadowVPUniformBuffers[CASCADE_COUNT] = { lv::UniformBuffer(sizeof(PCShadowVP)), lv::UniformBuffer(sizeof(PCShadowVP)), lv::UniformBuffer(sizeof(PCShadowVP)) };
     lv::UniformBuffer mainShadowUniformBuffer(sizeof(glm::mat4) * CASCADE_COUNT);
     lv::UniformBuffer mainVPUniformBuffer(sizeof(UBOMainVP));
 
     //Deferred descriptor set
     lv::DescriptorSet deferredDecriptorSet(deferredLayout, 0);
-    deferredDecriptorSet.addBufferBinding(deferredVPUniformBuffer.descriptorInfo(), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    deferredDecriptorSet.addBinding(deferredVPUniformBuffer.descriptorInfo(), 0);
 
     deferredDecriptorSet.init();
 
     //Shadow descriptor set
-    lv::DescriptorSet shadowDecriptorSets[CASCADE_COUNT] = { lv::DescriptorSet(shadowLayout, 0), lv::DescriptorSet(shadowLayout, 0), lv::DescriptorSet(shadowLayout, 0), lv::DescriptorSet(shadowLayout, 0) };
+    lv::DescriptorSet shadowDecriptorSets[CASCADE_COUNT] = { lv::DescriptorSet(shadowLayout, 0), lv::DescriptorSet(shadowLayout, 0), lv::DescriptorSet(shadowLayout, 0) };
     for (uint8_t i = 0; i < CASCADE_COUNT; i++) {
-        shadowDecriptorSets[i].addBufferBinding(shadowVPUniformBuffers[i].descriptorInfo(), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        shadowDecriptorSets[i].addBinding(shadowVPUniformBuffers[i].descriptorInfo(), 0);
 
         shadowDecriptorSets[i].init();
     }
@@ -1419,7 +1466,7 @@ int main() {
     std::default_random_engine rndEngine((unsigned)time(0));
 	std::uniform_real_distribution<int8_t> rndDist(-128, 127);
 
-    std::vector<glm::i8vec4> ssaoNoise(SSAO_NOISE_SIZE * SSAO_NOISE_SIZE);
+    std::vector<glm::i8vec4> ssaoNoise(SSAO_NOISE_TEX_SIZE * SSAO_NOISE_TEX_SIZE);
     for (uint32_t i = 0; i < ssaoNoise.size(); i++) {
         ssaoNoise[i] = glm::i8vec4(rndDist(rndEngine), rndDist(rndEngine), 0, 0);
     }
@@ -1427,8 +1474,8 @@ int main() {
     lv::Texture ssaoNoiseTex;
     //ssaoNoiseTex.format = VK_FORMAT_R32G32B32A32_SFLOAT;
     ssaoNoiseTex.textureData = ssaoNoise.data();
-    ssaoNoiseTex.width = SSAO_NOISE_SIZE;
-    ssaoNoiseTex.height = SSAO_NOISE_SIZE;
+    ssaoNoiseTex.width = SSAO_NOISE_TEX_SIZE;
+    ssaoNoiseTex.height = SSAO_NOISE_TEX_SIZE;
     ssaoNoiseTex.sampler.addressMode = LV_SAMPLER_ADDRESS_MODE_REPEAT;
     ssaoNoiseTex.init();
 
@@ -1455,7 +1502,7 @@ int main() {
 
     //Skylight
     lv::Skylight skylight;
-    skylight.load("assets/skylight/canyon.png", equiToCubeShaderCreateInfo);
+    skylight.load("assets/skylight/canyon.hdr", equiToCubeShaderCreateInfo);
     skylight.createIrradianceMap(irradianceShaderCreateInfo);
     skylight.createPrefilteredMap(prefilteredShaderCreateInfo);
 
@@ -1468,7 +1515,7 @@ int main() {
 
     //Skylight descriptor set
     lv::DescriptorSet skylightDescriptorSet(skylightLayout, 0);
-    skylightDescriptorSet.addImageBinding(skylight.environmentMapSampler.descriptorInfo(skylight.environmentMapImageView), 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    skylightDescriptorSet.addBinding(skylight.environmentMapSampler.descriptorInfo(skylight.environmentMapImageView), 0);
 
     skylightDescriptorSet.init();
     lv::DescriptorSet ssaoDescriptorSet(ssaoLayout, 0);
@@ -1495,8 +1542,16 @@ int main() {
     SETUP_HDR_DESCRIPTORS
     hdrDescriptorSet.init();
 
+    /*
+    lv::DescriptorSet disasmDescriptorSet(disasmLayout, 0);
+    disasmDescriptorSet.addBinding(deferredRenderPass.depthAttachmentView.descriptorInfo(), 0);
+    disasmDescriptorSet.addBinding(disasmComputePass.outputColorAttachmentView.descriptorInfo(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_IMAGE_LAYOUT_GENERAL), 1);
+    disasmDescriptorSet.init();
+    */
+
     //Viewports
 	lv::Viewport mainViewport(0, 0, SRC_WIDTH/* * 2*/, SRC_HEIGHT/* * 2*/);
+    lv::Viewport halfMainViewport(0, 0, SRC_WIDTH / 2, SRC_HEIGHT / 2);
     lv::Viewport shadowViewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
 #endif
 
@@ -1574,9 +1629,9 @@ int main() {
     );
     editor.createViewportSet(
 #ifdef LV_BACKEND_VULKAN
-        hdrRenderPass.colorAttachmentView.imageViews, hdrRenderPass.colorAttachmentSampler.sampler
+        hdrRenderPass.colorImageView.imageViews, hdrRenderPass.colorSampler.sampler
 #elif defined LV_BACKEND_METAL
-        hdrRenderPass.colorAttachment.images
+        hdrRenderPass.colorImage.images
 #endif
     );
 
@@ -1592,7 +1647,7 @@ int main() {
 		std::string newTitle = std::string(SRC_TITLE) + " " + dtStr + " ms";
 		lvndSetWindowTitle(window, newTitle.c_str());
 
-        shadowFrameCounter = (shadowFrameCounter + 1) % 24;
+        //shadowFrameCounter = (shadowFrameCounter + 1) % 24;
 
         lvndPollEvents(window);
         //std::cout << "Shift: " << lvndGetModifier(window.window, LVND_MODIFIER_SHIFT) << " : " << "Command: " << lvndGetModifier(window.window, LVND_MODIFIER_SUPER) << std::endl;
@@ -1750,19 +1805,37 @@ int main() {
 
         shadowRenderPass.framebuffer.render();
 
+        //Disassemble depth compute pass
+        /*
+        disasmComputePipeline.bind();
+
+#ifdef LV_BACKEND_VULKAN
+        disasmDescriptorSet.bind();
+#elif defined(LV_BACKEND_METAL)
+        deferredRenderPass.depthAttachment.bind(0, LV_SHADER_STAGE_COMPUTE_BIT);
+        disasmComputePass.outputColorAttachment.bind(1, LV_SHADER_STAGE_COMPUTE_BIT);
+#endif
+
+        disasmComputePipeline.dispatch(64, 64, 1,
+                                       (SRC_WIDTH + 64 - 1) / 64, (SRC_HEIGHT + 64 - 1) / 64, 1);
+        */
+
         //SSAO render pass
         ssaoRenderPass.framebuffer.bind();
 
         ssaoGraphicsPipeline.bind();
 #ifdef LV_BACKEND_VULKAN
-        mainViewport.bind();
+        halfMainViewport.bind();
         ssaoDescriptorSet.bind();
 #elif defined LV_BACKEND_METAL
-        deferredRenderPass.depthAttachment.bind(0);
-        deferredRenderPass.depthAttachmentSampler.bind(0);
+        //disasmComputePass.outputColorAttachment.bind(0);
+        //disasmComputePass.outputColorAttachmentSampler.bind(0);
 
-        deferredRenderPass.normalRoughnessAttachment.bind(1);
-        deferredRenderPass.normalRoughnessAttachmentSampler.bind(1);
+        deferredRenderPass.depthImage.bind(0);
+        deferredRenderPass.depthSampler.bind(0);
+
+        deferredRenderPass.normalRoughnessImage.bind(1);
+        deferredRenderPass.normalRoughnessSampler.bind(1);
 
         ssaoNoiseTex.image.bind(2);
         ssaoNoiseTex.sampler.bind(2);
@@ -1789,8 +1862,8 @@ int main() {
         mainViewport.bind();
         ssaoBlurDescriptorSet.bind();
 #elif defined LV_BACKEND_METAL
-        ssaoRenderPass.colorAttachment.bind(0);
-        ssaoRenderPass.colorAttachmentSampler.bind(0);
+        ssaoRenderPass.colorImage.bind(0);
+        ssaoRenderPass.colorSampler.bind(0);
 #endif
 
         swapChain.renderFullscreenTriangle();
@@ -1841,17 +1914,17 @@ int main() {
         mainDescriptorSet1.bind();
         mainDescriptorSet2.bind();
 #elif defined LV_BACKEND_METAL
-		shadowRenderPass.depthAttachment.bind(0);
-		shadowRenderPass.depthAttachmentSampler.bind(0);
+		shadowRenderPass.depthImage.bind(0);
+		shadowRenderPass.depthSampler.bind(0);
 
-		deferredRenderPass.depthAttachment.bind(1);
-		deferredRenderPass.depthAttachmentSampler.bind(1);
+		deferredRenderPass.depthImage.bind(1);
+		deferredRenderPass.depthSampler.bind(1);
 
-        deferredRenderPass.normalRoughnessAttachment.bind(2);
-		deferredRenderPass.normalRoughnessAttachmentSampler.bind(2);
+        deferredRenderPass.normalRoughnessImage.bind(2);
+		deferredRenderPass.normalRoughnessSampler.bind(2);
 
-		deferredRenderPass.albedoMetallicAttachment.bind(3);
-		deferredRenderPass.albedoMetallicAttachmentSampler.bind(3);
+		deferredRenderPass.albedoMetallicImage.bind(3);
+		deferredRenderPass.albedoMetallicSampler.bind(3);
 
         skylight.irradianceMapImage.bind(4);
         skylight.irradianceMapSampler.bind(4);
@@ -1862,8 +1935,8 @@ int main() {
         brdfLutTexture.image.bind(6);
         brdfLutTexture.sampler.bind(6);
 
-		ssaoBlurRenderPass.colorAttachment.bind(7);
-		ssaoBlurRenderPass.colorAttachmentSampler.bind(7);
+		ssaoBlurRenderPass.colorImage.bind(7);
+		ssaoBlurRenderPass.colorSampler.bind(7);
 #endif
 
         UBOMainVP uboMainVP{glm::inverse(viewProj), g_game->scene().camera->position};
@@ -1898,8 +1971,8 @@ int main() {
         mainViewport.bind();
         hdrDescriptorSet.bind();
 #elif defined LV_BACKEND_METAL
-        mainRenderPass.colorAttachment.bind(0);
-        mainRenderPass.colorAttachmentSampler.bind(0);
+        mainRenderPass.colorImage.bind(0);
+        mainRenderPass.colorSampler.bind(0);
 #endif
 
         //PCSkylightVP pcHdrVP{camera.projection, camera.view, camera.position};
@@ -1932,6 +2005,7 @@ int main() {
 
         editor.endDockspace();
 
+        //std::cout << "Swap chain dependency count: " << swapChain.renderPass.dependencies.size() << std::endl;
         editor.render();
     
 		swapChain.framebuffer.unbind();
@@ -2013,6 +2087,9 @@ int main() {
     fragHdrModule.destroy();
     hdrGraphicsPipeline.destroy();
 
+    //compDisasmModule.destroy();
+    //disasmComputePipeline.destroy();
+
     std::cout << "Shaders destroyed" << std::endl;
 
     /*
@@ -2021,36 +2098,36 @@ int main() {
     deferredRenderPass.positionDepthAttachmentSampler.destroy();
     */
 
-    deferredRenderPass.normalRoughnessAttachment.destroy();
-    deferredRenderPass.normalRoughnessAttachmentView.destroy();
-    deferredRenderPass.normalRoughnessAttachmentSampler.destroy();
+    deferredRenderPass.normalRoughnessImage.destroy();
+    deferredRenderPass.normalRoughnessImageView.destroy();
+    deferredRenderPass.normalRoughnessSampler.destroy();
 
-    deferredRenderPass.albedoMetallicAttachment.destroy();
-    deferredRenderPass.albedoMetallicAttachmentView.destroy();
-    deferredRenderPass.albedoMetallicAttachmentSampler.destroy();
+    deferredRenderPass.albedoMetallicImage.destroy();
+    deferredRenderPass.albedoMetallicImageView.destroy();
+    deferredRenderPass.albedoMetallicSampler.destroy();
 
-    deferredRenderPass.depthAttachment.destroy();
-    deferredRenderPass.depthAttachmentView.destroy();
+    deferredRenderPass.depthImage.destroy();
+    deferredRenderPass.depthImageView.destroy();
 
-    shadowRenderPass.depthAttachment.destroy();
-    shadowRenderPass.depthAttachmentView.destroy();
+    shadowRenderPass.depthImage.destroy();
+    shadowRenderPass.depthImageView.destroy();
     //for (uint8_t i = 0; i < CASCADE_COUNT; i++)
     //    shadowRenderPass.depthAttachmentViews[i].destroy();
-    shadowRenderPass.depthAttachmentSampler.destroy();
+    shadowRenderPass.depthSampler.destroy();
 
-    ssaoRenderPass.colorAttachment.destroy();
-    ssaoRenderPass.colorAttachmentView.destroy();
-    ssaoRenderPass.colorAttachmentSampler.destroy();
+    ssaoRenderPass.colorImage.destroy();
+    ssaoRenderPass.colorImageView.destroy();
+    ssaoRenderPass.colorSampler.destroy();
 
-    ssaoBlurRenderPass.colorAttachment.destroy();
-    ssaoBlurRenderPass.colorAttachmentView.destroy();
-    ssaoBlurRenderPass.colorAttachmentSampler.destroy();
+    ssaoBlurRenderPass.colorImage.destroy();
+    ssaoBlurRenderPass.colorImageView.destroy();
+    ssaoBlurRenderPass.colorSampler.destroy();
 
-    mainRenderPass.colorAttachment.destroy();
-    mainRenderPass.colorAttachmentView.destroy();
-    mainRenderPass.colorAttachmentSampler.destroy();
+    mainRenderPass.colorImage.destroy();
+    mainRenderPass.colorImageView.destroy();
+    mainRenderPass.colorSampler.destroy();
 
-    std::cout << "Attachments destroyed" << std::endl;
+    std::cout << "Images destroyed" << std::endl;
 
     editor.destroy();
 
@@ -2255,9 +2332,6 @@ void newEntityPlane() {
 #endif
     );
     meshComponent.createPlane();
-    for (uint8_t i = 0; i < 3; i++) {
-        meshComponent.addTexture(nullptr, i);
-    }
     entity.addComponent<lv::MaterialComponent>(
 #ifdef LV_BACKEND_VULKAN
         g_game->deferredLayout
@@ -2295,6 +2369,15 @@ void duplicateEntity() {
         lv::CameraComponent& cameraComponent = entity.addComponent<lv::CameraComponent>(selectedEntity.getComponent<lv::CameraComponent>());
         cameraComponent.active = false;
     }
+
+    if (selectedEntity.hasComponent<lv::SphereColliderComponent>())
+        entity.addComponent<lv::SphereColliderComponent>(selectedEntity.getComponent<lv::SphereColliderComponent>());
+
+    if (selectedEntity.hasComponent<lv::BoxColliderComponent>())
+        entity.addComponent<lv::BoxColliderComponent>(selectedEntity.getComponent<lv::BoxColliderComponent>());
+
+    if (selectedEntity.hasComponent<lv::RigidBodyComponent>())
+        entity.addComponent<lv::RigidBodyComponent>(selectedEntity.getComponent<lv::RigidBodyComponent>());
     
     g_editor->selectedEntityID = entity.ID;
 }

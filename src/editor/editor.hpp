@@ -61,7 +61,7 @@ public:
 
     //Descriptor sets
 #ifdef LV_BACKEND_VULKAN
-    std::array<VkDescriptorSet, MAX_FRAMES_IN_FLIGHT> viewportSets;
+    std::vector<VkDescriptorSet> viewportSets;
 
     lv::PipelineLayout& deferredLayout;
 #elif defined LV_BACKEND_METAL

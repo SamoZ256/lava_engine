@@ -7,9 +7,9 @@ layout (location = 0) out vec4 FragColor;
 layout (location = 0) in vec2 inTexCoord;
 
 //Specialization constants
-#define CASCADE_COUNT 4
-#define SHADOW_FAR_PLANE 100.0
-const float CASCADE_LEVELS[CASCADE_COUNT] = float[] (SHADOW_FAR_PLANE * 0.08, SHADOW_FAR_PLANE * 0.22, SHADOW_FAR_PLANE * 0.5, SHADOW_FAR_PLANE);
+#define CASCADE_COUNT 3
+//#define SHADOW_FAR_PLANE 100.0
+//const float CASCADE_LEVELS[CASCADE_COUNT] = float[] (SHADOW_FAR_PLANE * 0.08, SHADOW_FAR_PLANE * 0.22, SHADOW_FAR_PLANE * 0.5, SHADOW_FAR_PLANE);
 
 layout (set = 0, binding = 0) uniform LIGHT {
     vec4 color;
@@ -25,7 +25,7 @@ layout (set = 0, binding = 2) uniform SHADOW {
     mat4 VPs[CASCADE_COUNT];
 } u_shadow;
 
-layout (set = 0, binding = 3) uniform sampler2DArray u_shadowMap;
+layout (set = 0, binding = 3) uniform sampler2DArrayShadow u_shadowMap;
 
 layout (set = 1, binding = 0) uniform samplerCube u_irradianceMap;
 layout (set = 1, binding = 1) uniform samplerCube u_prefilteredMap;
@@ -39,10 +39,13 @@ layout (set = 2, binding = 3) uniform sampler2D u_ssaoTex;
 
 //Constants
 const float PI = 3.14159265359;
+/*
 #define SHADOW_SAMPLE_COUNT 16
-#define SHADOW_PENUMBRA_SIZE 12.0
+#define SHADOW_PENUMBRA_SIZE 2.0
+*/
 //const int PENUMBRA_SAMPLE_COUNT = 4;
 
+/*
 vec2 poissonDisk[16] = vec2[](
    vec2( -0.94201624, -0.39906216 ),
    vec2( 0.94558609, -0.76890725 ),
@@ -61,6 +64,7 @@ vec2 poissonDisk[16] = vec2[](
    vec2( 0.19984126, 0.78641367 ),
    vec2( 0.14383161, -0.14100790 )
 );
+*/
 
 //Random number generator
 float random(vec3 seed, int i) {
@@ -178,12 +182,12 @@ float getVisibility(vec3 position, vec3 normal) {
     bias = clamp(bias, 0.0/*005*/, 0.001);
     //float bias = 0.00001;
 
-    float occlusion = 0.0;
+    //float occlusion = 0.0;
     //float lightDepth = shadowCoord.z;
 
     //float shadowDist = 1.0;//getShadowDist((shadowCoord.z - bias) - texture(u_shadowMap, shadowCoord.xy).x);
-    vec2 texelSize = 1.0 / vec2(textureSize(u_shadowMap, 0));
-    texelSize /= texelSize.x > texelSize.y ? texelSize.x : texelSize.y;
+    //vec2 texelSize = 1.0 / vec2(textureSize(u_shadowMap, 0));
+    //texelSize /= texelSize.x > texelSize.y ? texelSize.x : texelSize.y;
 
     //Estimating penumbra size
     /*
@@ -198,17 +202,20 @@ float getVisibility(vec3 position, vec3 normal) {
     */
 
     //Calculating visibility
+    /*
     for (int i = 0; i < SHADOW_SAMPLE_COUNT; i++) {
         int index = i % 16;//int(SHADOW_SAMPLE_COUNT * random(position, i)) % 16;
-        vec2 coord = vec2(shadowCoord.xy + normalize(poissonDisk[index]) * random(position, i) * layerRatio / 700.0/* * shadowDist*/ * SHADOW_PENUMBRA_SIZE * texelSize);
+        vec2 coord = vec2(shadowCoord.xy + normalize(poissonDisk[index]) * random(position, i) * layerRatio / 700.0 * SHADOW_PENUMBRA_SIZE * texelSize);
         float currentDist = (shadowCoord.z - bias) - texture(u_shadowMap, vec3(coord, layer)).x;
         if (currentDist > 0.0) {
-            occlusion += 1.0 / clamp(currentDist, 1.0, 2.0);
+            occlusion += 1.0;// / clamp(currentDist, 1.0, 2.0)
             //shadowDist = getShadowDist(currentDist);
         }
     }
+    */
 
-    return 1.0 - occlusion / SHADOW_SAMPLE_COUNT * 0.9;
+    //return 1.0 - occlusion / SHADOW_SAMPLE_COUNT;
+    return texture(u_shadowMap, vec4(shadowCoord.xy, layer, shadowCoord.z - bias));
 }
 
 //Position reconstruction

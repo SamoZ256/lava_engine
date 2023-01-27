@@ -61,8 +61,8 @@ struct VP
     float3 cameraPos;
 };
 
-constant spvUnsafeArray<float2, 16> _119 = spvUnsafeArray<float2, 16>({ float2(-0.94201624393463134765625, -0.39906215667724609375), float2(0.94558608531951904296875, -0.768907248973846435546875), float2(-0.094184100627899169921875, -0.929388701915740966796875), float2(0.34495937824249267578125, 0.29387760162353515625), float2(-0.91588580608367919921875, 0.4577143192291259765625), float2(-0.8154423236846923828125, -0.87912464141845703125), float2(-0.38277542591094970703125, 0.2767684459686279296875), float2(0.9748439788818359375, 0.7564837932586669921875), float2(0.4432332515716552734375, -0.9751155376434326171875), float2(0.5374298095703125, -0.473734200000762939453125), float2(-0.2649691104888916015625, -0.418930232524871826171875), float2(0.79197514057159423828125, 0.19090187549591064453125), float2(-0.24188840389251708984375, 0.997065067291259765625), float2(-0.8140995502471923828125, 0.91437590122222900390625), float2(0.1998412609100341796875, 0.786413669586181640625), float2(0.14383161067962646484375, -0.141007900238037109375) });
-constant spvUnsafeArray<float, 4> _794 = spvUnsafeArray<float, 4>({ 8.0, 22.0, 50.0, 100.0 });
+constant spvUnsafeArray<float2, 16> _112 = spvUnsafeArray<float2, 16>({ float2(-0.94201624393463134765625, -0.39906215667724609375), float2(0.94558608531951904296875, -0.768907248973846435546875), float2(-0.094184100627899169921875, -0.929388701915740966796875), float2(0.34495937824249267578125, 0.29387760162353515625), float2(-0.91588580608367919921875, 0.4577143192291259765625), float2(-0.8154423236846923828125, -0.87912464141845703125), float2(-0.38277542591094970703125, 0.2767684459686279296875), float2(0.9748439788818359375, 0.7564837932586669921875), float2(0.4432332515716552734375, -0.9751155376434326171875), float2(0.5374298095703125, -0.473734200000762939453125), float2(-0.2649691104888916015625, -0.418930232524871826171875), float2(0.79197514057159423828125, 0.19090187549591064453125), float2(-0.24188840389251708984375, 0.997065067291259765625), float2(-0.8140995502471923828125, 0.91437590122222900390625), float2(0.1998412609100341796875, 0.786413669586181640625), float2(0.14383161067962646484375, -0.141007900238037109375) });
+constant spvUnsafeArray<float, 4> _710 = spvUnsafeArray<float, 4>({ 8.0, 22.0, 50.0, 100.0 });
 
 struct main0_out
 {
@@ -79,12 +79,12 @@ float3 reconstructPosFromDepth(thread const float4x4& invViewProj, thread const 
 {
     float3 posInViewProj = float3((texCoord.x * 2.0) - 1.0, ((1.0 - texCoord.y) * 2.0) - 1.0, depth);
     float4 position = invViewProj * float4(posInViewProj, 1.0);
-    float _147 = position.w;
-    float4 _148 = position;
-    float3 _151 = _148.xyz / float3(_147);
-    position.x = _151.x;
-    position.y = _151.y;
-    position.z = _151.z;
+    float _140 = position.w;
+    float4 _141 = position;
+    float3 _144 = _141.xyz / float3(_140);
+    position.x = _144.x;
+    position.y = _144.y;
+    position.z = _144.z;
     return position.xyz;
 }
 
@@ -162,60 +162,53 @@ float3 calcDirectLight(thread const float3& norm, thread const float3& viewDir, 
 }
 
 static inline __attribute__((always_inline))
-float random(thread const float3& seed, thread const int& i)
-{
-    float dotProduct = dot(float4(seed, float(i)), float4(12.98980045318603515625, 78.233001708984375, 45.16400146484375, 94.67299652099609375));
-    return fract(sin(dotProduct) * 43758.546875);
-}
-
-static inline __attribute__((always_inline))
-float getVisibility(thread const float3& position, thread const float3& normal, thread spvUnsafeArray<float2, 16>& poissonDisk, constant LIGHT& u_light, constant SHADOW& u_shadow, texture2d_array<float> u_shadowMap, sampler u_shadowMapSmplr)
+float getVisibility(thread const float3& position, thread const float3& normal, constant LIGHT& u_light, constant SHADOW& u_shadow, depth2d_array<float> u_shadowMap, sampler u_shadowMapSmplr)
 {
     int layer = -1;
     float4 shadowCoord;
     for (int i = 0; i < 4; i++)
     {
         shadowCoord = u_shadow.VPs[i] * float4(position, 1.0);
-        float _430 = shadowCoord.w;
-        float4 _431 = shadowCoord;
-        float3 _434 = _431.xyz / float3(_430);
-        shadowCoord.x = _434.x;
-        shadowCoord.y = _434.y;
-        shadowCoord.z = _434.z;
-        float4 _441 = shadowCoord;
-        float2 _446 = (_441.xy * 0.5) + float2(0.5);
-        shadowCoord.x = _446.x;
-        shadowCoord.y = _446.y;
+        float _404 = shadowCoord.w;
+        float4 _405 = shadowCoord;
+        float3 _408 = _405.xyz / float3(_404);
+        shadowCoord.x = _408.x;
+        shadowCoord.y = _408.y;
+        shadowCoord.z = _408.z;
+        float4 _415 = shadowCoord;
+        float2 _420 = (_415.xy * 0.5) + float2(0.5);
+        shadowCoord.x = _420.x;
+        shadowCoord.y = _420.y;
         shadowCoord.y = 1.0 - shadowCoord.y;
-        bool _458 = shadowCoord.x >= 0.00999999977648258209228515625;
-        bool _465;
-        if (_458)
+        bool _432 = shadowCoord.x >= 0.00999999977648258209228515625;
+        bool _439;
+        if (_432)
         {
-            _465 = shadowCoord.x <= 0.9900000095367431640625;
+            _439 = shadowCoord.x <= 0.9900000095367431640625;
         }
         else
         {
-            _465 = _458;
+            _439 = _432;
         }
-        bool _471;
-        if (_465)
+        bool _445;
+        if (_439)
         {
-            _471 = shadowCoord.y >= 0.00999999977648258209228515625;
+            _445 = shadowCoord.y >= 0.00999999977648258209228515625;
         }
         else
         {
-            _471 = _465;
+            _445 = _439;
         }
-        bool _477;
-        if (_471)
+        bool _451;
+        if (_445)
         {
-            _477 = shadowCoord.y <= 0.9900000095367431640625;
+            _451 = shadowCoord.y <= 0.9900000095367431640625;
         }
         else
         {
-            _477 = _471;
+            _451 = _445;
         }
-        if (_477)
+        if (_451)
         {
             layer = i;
             break;
@@ -232,35 +225,22 @@ float getVisibility(thread const float3& position, thread const float3& normal, 
     }
     float bias0 = 0.0500000007450580596923828125 * tan(acos(dot(normal, u_light.direction)));
     bias0 = fast::clamp(bias0, 0.0, 0.001000000047497451305389404296875);
-    float occlusion = 0.0;
     float2 texelSize = float2(1.0) / float2(float3(int3(u_shadowMap.get_width(), u_shadowMap.get_height(), u_shadowMap.get_array_size())).xy);
-    float _531;
+    float _504;
     if (texelSize.x > texelSize.y)
     {
-        _531 = texelSize.x;
+        _504 = texelSize.x;
     }
     else
     {
-        _531 = texelSize.y;
+        _504 = texelSize.y;
     }
-    texelSize /= float2(_531);
-    for (int i_1 = 0; i_1 < 16; i_1++)
-    {
-        int index = i_1 % 16;
-        float3 param = position;
-        int param_1 = i_1;
-        float2 coord = float2(shadowCoord.xy + (((((fast::normalize(poissonDisk[index]) * random(param, param_1)) * layerRatio) / float2(700.0)) * 12.0) * texelSize));
-        float3 _593 = float3(coord, float(layer));
-        float currentDist = (shadowCoord.z - bias0) - u_shadowMap.sample(u_shadowMapSmplr, _593.xy, uint(round(_593.z))).x;
-        if (currentDist > 0.0)
-        {
-            occlusion += (1.0 / fast::clamp(currentDist, 1.0, 2.0));
-        }
-    }
-    return 1.0 - ((occlusion / 16.0) * 0.89999997615814208984375);
+    texelSize /= float2(_504);
+    float4 _527 = float4(shadowCoord.xy, float(layer), shadowCoord.z - bias0);
+    return u_shadowMap.sample_compare(u_shadowMapSmplr, _527.xy, uint(round(_527.z)), _527.w);
 }
 
-fragment main0_out main0(main0_in in [[stage_in]], constant LIGHT& u_light [[buffer(0)]], constant SHADOW& u_shadow [[buffer(1)]], constant VP& u_vp [[buffer(2)]], texture2d_array<float> u_shadowMap [[texture(0)]], texture2d<float> u_depth [[texture(1)]], texture2d<float> u_normalRoughness [[texture(2)]], texture2d<float> u_albedoMetallic [[texture(3)]], texturecube<float> u_irradianceMap [[texture(4)]], texturecube<float> u_prefilteredMap [[texture(5)]], texture2d<float> u_brdfLutMap [[texture(6)]], texture2d<float> u_ssaoTex [[texture(7)]], sampler u_shadowMapSmplr [[sampler(0)]], sampler u_depthSmplr [[sampler(1)]], sampler u_normalRoughnessSmplr [[sampler(2)]], sampler u_albedoMetallicSmplr [[sampler(3)]], sampler u_irradianceMapSmplr [[sampler(4)]], sampler u_prefilteredMapSmplr [[sampler(5)]], sampler u_brdfLutMapSmplr [[sampler(6)]], sampler u_ssaoTexSmplr [[sampler(7)]])
+fragment main0_out main0(main0_in in [[stage_in]], constant LIGHT& u_light [[buffer(0)]], constant SHADOW& u_shadow [[buffer(1)]], constant VP& u_vp [[buffer(2)]], depth2d_array<float> u_shadowMap [[texture(0)]], texture2d<float> u_depth [[texture(1)]], texture2d<float> u_normalRoughness [[texture(2)]], texture2d<float> u_albedoMetallic [[texture(3)]], texturecube<float> u_irradianceMap [[texture(4)]], texturecube<float> u_prefilteredMap [[texture(5)]], texture2d<float> u_brdfLutMap [[texture(6)]], texture2d<float> u_ssaoTex [[texture(7)]], sampler u_shadowMapSmplr [[sampler(0)]], sampler u_depthSmplr [[sampler(1)]], sampler u_normalRoughnessSmplr [[sampler(2)]], sampler u_albedoMetallicSmplr [[sampler(3)]], sampler u_irradianceMapSmplr [[sampler(4)]], sampler u_prefilteredMapSmplr [[sampler(5)]], sampler u_brdfLutMapSmplr [[sampler(6)]], sampler u_ssaoTexSmplr [[sampler(7)]])
 {
     main0_out out = {};
     spvUnsafeArray<float2, 16> poissonDisk = spvUnsafeArray<float2, 16>({ float2(-0.94201624393463134765625, -0.39906215667724609375), float2(0.94558608531951904296875, -0.768907248973846435546875), float2(-0.094184100627899169921875, -0.929388701915740966796875), float2(0.34495937824249267578125, 0.29387760162353515625), float2(-0.91588580608367919921875, 0.4577143192291259765625), float2(-0.8154423236846923828125, -0.87912464141845703125), float2(-0.38277542591094970703125, 0.2767684459686279296875), float2(0.9748439788818359375, 0.7564837932586669921875), float2(0.4432332515716552734375, -0.9751155376434326171875), float2(0.5374298095703125, -0.473734200000762939453125), float2(-0.2649691104888916015625, -0.418930232524871826171875), float2(0.79197514057159423828125, 0.19090187549591064453125), float2(-0.24188840389251708984375, 0.997065067291259765625), float2(-0.8140995502471923828125, 0.91437590122222900390625), float2(0.1998412609100341796875, 0.786413669586181640625), float2(0.14383161067962646484375, -0.141007900238037109375) });
@@ -288,7 +268,7 @@ fragment main0_out main0(main0_in in [[stage_in]], constant LIGHT& u_light [[buf
     float param_8 = metallic;
     float3 param_9 = position;
     float3 param_10 = normal;
-    float3 result = calcDirectLight(param_3, param_4, param_5, param_6, param_7, param_8, u_light) * getVisibility(param_9, param_10, poissonDisk, u_light, u_shadow, u_shadowMap, u_shadowMapSmplr);
+    float3 result = calcDirectLight(param_3, param_4, param_5, param_6, param_7, param_8, u_light) * getVisibility(param_9, param_10, u_light, u_shadow, u_shadowMap, u_shadowMapSmplr);
     float param_11 = fast::max(dot(normal, viewDir), 0.0);
     float3 param_12 = F0;
     float param_13 = roughness;

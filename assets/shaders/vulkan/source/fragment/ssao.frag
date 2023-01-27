@@ -23,8 +23,8 @@ layout (push_constant) uniform VP  {
 } u_vp;
 
 const int SSAO_KERNEL_SIZE = 24;
-const float SSAO_RADIUS = 1.0;
-const float RANGE_CHECK_RADIUS = 0.2;
+const float SSAO_RADIUS = 0.4;
+const float RANGE_CHECK_RADIUS = 0.02;
 
 const vec3 SSAO_KERNEL[64] = vec3[](
     vec3(-0.0622651, -0.0516783, 0.0374449),
@@ -115,7 +115,7 @@ void main()  {
 	// Get a random vector using a noise lookup
 	ivec2 texDim = textureSize(u_depth, 0); 
 	ivec2 noiseDim = textureSize(u_ssaoNoise, 0);
-	const vec2 noiseUV = vec2(float(texDim.x)/float(noiseDim.x), float(texDim.y)/(noiseDim.y)) * inTexCoord;
+	const vec2 noiseUV = vec2(float(texDim.x) / float(noiseDim.x), float(texDim.y) / (noiseDim.y)) * inTexCoord;
 	vec3 randomVec = texture(u_ssaoNoise, noiseUV).xyz * 2.0 - 1.0;
 	
 	// Create TBN matrix
@@ -126,7 +126,7 @@ void main()  {
 	// Calculate occlusion value
 	float occlusion = 0.0;
 	// remove banding
-	const float bias = 0.05;
+	const float bias = 0.04;
 
 	for (int i = 0; i < SSAO_KERNEL_SIZE; i++) {		
 		vec3 samplePos = TBN * SSAO_KERNEL[i].xyz; 

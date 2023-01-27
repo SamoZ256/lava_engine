@@ -49,7 +49,6 @@ endif ()
 file(GLOB src
     "src/editor/*.cpp"
     "src/scene/*.cpp"
-    "src/math/*.cpp"
     "external/imgui/*.cpp"
     "external/imgui/misc/cpp/*.cpp"
     "external/imguizmo/include/ImGuizmo/*.cpp"
@@ -66,9 +65,10 @@ find_package(Bullet REQUIRED)
 
 find_package(Assimp REQUIRED)
 
+find_package(glm REQUIRED)
+
 include_directories(
     "/Users/samuliak/Documents/lvnd/include"
-    "/usr/local/Cellar/glm/0.9.9.8/include"
     "external/stb/include"
     "external/imgui"
     "external/imgui/used_backends"
@@ -76,10 +76,11 @@ include_directories(
     "external/ImGuizmo/include"
     "external/entt/include"
     "external/json/include"
-    "external/nativefiledialog/src/include"
+    "/Users/samuliak/Documents/nativefiledialog/src/include"
     "external/ImGuizmo/include"
     "/Users/samuliak/Documents/lava_core/include"
     "/Users/samuliak/Documents/lava_utils/include"
+    ${GLM_INCLUDE_DIRS}
     ${ASSIMP_INCLUDE_DIRS}
     ${BULLET_INCLUDE_DIRS}
 )
@@ -87,7 +88,7 @@ include_directories(
 find_library (
     NFD_LIB
     NAMES nfd libnfd
-    HINTS "external/nativefiledialog/src"
+    HINTS "/Users/samuliak/Documents/nativefiledialog/src"
     NO_DEFAULT_PATH
 )
 
