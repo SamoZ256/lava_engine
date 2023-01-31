@@ -23,9 +23,12 @@ if (BACKEND_VULKAN)
 
     set(BACKEND vulkan)
 
+    add_compile_definitions(
+        LV_BACKEND_VULKAN
+    )
+
     include_directories(
         "external/vma/include"
-        "/Users/samuliak/Documents/lava_core/include/vulkan"
     )
 
     if (APPLE)
@@ -40,9 +43,12 @@ elseif (BACKEND_METAL)
 
     set(BACKEND metal)
 
+    add_compile_definitions(
+        LV_BACKEND_METAL
+    )
+
     include_directories(
         "external/metal-cpp/include"
-        "/Users/samuliak/Documents/lava_core/include/metal"
     )
 endif ()
 
@@ -68,7 +74,7 @@ find_package(Assimp REQUIRED)
 find_package(glm REQUIRED)
 
 include_directories(
-    "/Users/samuliak/Documents/lvnd/include"
+    "/Users/samuliak/Documents/lava_window/include"
     "external/stb/include"
     "external/imgui"
     "external/imgui/used_backends"
@@ -95,7 +101,7 @@ find_library (
 find_library(
     LVND_LIB
     NAMES lvnd liblvnd
-    HINTS "/Users/samuliak/Documents/lvnd/lib/${BACKEND}"
+    HINTS "/Users/samuliak/Documents/lava_window/lib"
     NO_DEFAULT_PATH
 )
 
@@ -107,6 +113,13 @@ find_library(APPKIT_LIB AppKit)
 message(STATUS "LVND_LIB: [${LVND_LIB}]")
 message(STATUS "NFD_LIB: [${NFD_LIB}]")
 
+find_library (
+    LAVA_CORE_LIB
+    NAMES lavacore liblavacore
+    HINTS "/Users/samuliak/Documents/lava_core/lib"
+    NO_DEFAULT_PATH
+)
+
 target_link_libraries(${PROJECT_NAME} PUBLIC
     "-framework GameController"
     ${NFD_LIB}
@@ -115,6 +128,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     ${UNIFORMTYPEIDENTIFIERS_LIB}
     ${APPKIT_LIB}
     ${LVND_LIB}
+    ${LAVA_CORE_LIB}
 )
 
 if (BACKEND_VULKAN)
@@ -137,13 +151,6 @@ if (BACKEND_VULKAN)
         NAMES vulkan libvulkan
         HINTS "/usr/local/Cellar/Vulkan/macOS/lib"
     )
-
-    find_library (
-        LAVA_CORE_LIB
-        NAMES lavacore liblavacore
-        HINTS "/Users/samuliak/Documents/lava_core/lib/vulkan"
-        NO_DEFAULT_PATH
-    )
     
     find_library (
         LAVA_UTILS_LIB
@@ -154,7 +161,6 @@ if (BACKEND_VULKAN)
 
     target_link_libraries(${PROJECT_NAME} PUBLIC
         ${Vulkan_LIBRARIES}
-        ${LAVA_CORE_LIB}
         ${LAVA_UTILS_LIB}
     )
 elseif (BACKEND_METAL)
@@ -167,13 +173,6 @@ elseif (BACKEND_METAL)
     find_library(METAL_LIB Metal)
 
     find_library (
-        LAVA_CORE_LIB
-        NAMES lavacore liblavacore
-        HINTS "/Users/samuliak/Documents/lava_core/lib/metal"
-        NO_DEFAULT_PATH
-    )
-
-    find_library (
         LAVA_UTILS_LIB
         NAMES lavautils liblavautils
         HINTS "/Users/samuliak/Documents/lava_utils/lib/metal"
@@ -182,7 +181,6 @@ elseif (BACKEND_METAL)
 
     target_link_libraries(${PROJECT_NAME} PUBLIC
         ${METAL_LIB}
-        ${LAVA_CORE_LIB}
         ${LAVA_UTILS_LIB}
     )
 endif ()

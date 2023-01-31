@@ -1,8 +1,6 @@
 #ifndef EDITOR_H
 #define EDITOR_H
 
-#include "backend.hpp"
-
 #include <imgui_impl_lvnd.h>
 #ifdef LV_BACKEND_VULKAN
 #include <imgui_impl_vulkan.h>

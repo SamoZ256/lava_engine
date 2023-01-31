@@ -3,8 +3,6 @@
 #include <array>
 #include <iostream>
 
-#include "backend.hpp"
-
 #define LVND_DEBUG
 #ifdef LV_BACKEND_VULKAN
 #define LVND_BACKEND_VULKAN
@@ -12,6 +10,8 @@
 #define LVND_BACKEND_METAL
 #endif
 #include "lvnd/lvnd.h"
+
+#include "lvcore/core/shader_module.hpp"
 
 #include "lvutils/camera/arcball_camera.hpp"
 
@@ -112,27 +112,20 @@ enum ShaderType {
 
 //Deferred render pass
 struct DeferredRenderPass {
-#ifdef LV_BACKEND_VULKAN
+    lv::Subpass subpass;
     lv::RenderPass renderPass;
-#endif
     lv::Framebuffer framebuffer;
 
     lv::Image normalRoughnessImage;
-#ifdef LV_BACKEND_VULKAN
     lv::ImageView normalRoughnessImageView;
-#endif
     lv::Sampler normalRoughnessSampler;
 
     lv::Image albedoMetallicImage;
-#ifdef LV_BACKEND_VULKAN
     lv::ImageView albedoMetallicImageView;
-#endif
     lv::Sampler albedoMetallicSampler;
 
     lv::Image depthImage;
-#ifdef LV_BACKEND_VULKAN
     lv::ImageView depthImageView;
-#endif
     lv::Sampler depthSampler;
 
     //lv::DescriptorSet descriptorSet = lv::DescriptorSet(SHADER_TYPE_MAIN, 0);
@@ -157,33 +150,24 @@ mainDescriptorSet2.addBinding(ssaoBlurRenderPass.colorSampler.descriptorInfo(ssa
 
 //Shadow render pass
 struct ShadowRenderPass {
-#ifdef LV_BACKEND_VULKAN
+    lv::Subpass subpass;
     lv::RenderPass renderPass;
-#endif
     lv::Framebuffer framebuffer;//s[CASCADE_COUNT];
     //lv::ImageView depthAttachmentViews[CASCADE_COUNT];
 
     lv::Image depthImage;
-#ifdef LV_BACKEND_VULKAN
     lv::ImageView depthImageView;
-    //lv::ImageView depthAttachmentViews[CASCADE_COUNT];
-#elif defined(LV_BACKEND_METAL)
-    //lv::Image depthAttachmentViews[CASCADE_COUNT];
-#endif
     lv::Sampler depthSampler;
 };
 
 //SSAO render pass
 struct SSAORenderPass {
-#ifdef LV_BACKEND_VULKAN
+    lv::Subpass subpass;
     lv::RenderPass renderPass;
-#endif
     lv::Framebuffer framebuffer;
 
     lv::Image colorImage;
-#ifdef LV_BACKEND_VULKAN
     lv::ImageView colorImageView;
-#endif
     lv::Sampler colorSampler;
 };
 
@@ -194,15 +178,12 @@ ssaoDescriptorSet.addBinding(ssaoNoiseTex.sampler.descriptorInfo(ssaoNoiseTex.im
 
 //SSAO blur render pass
 struct SSAOBlurRenderPass {
-#ifdef LV_BACKEND_VULKAN
+    lv::Subpass subpass;
     lv::RenderPass renderPass;
-#endif
     lv::Framebuffer framebuffer;
 
     lv::Image colorImage;
-#ifdef LV_BACKEND_VULKAN
     lv::ImageView colorImageView;
-#endif
     lv::Sampler colorSampler;
 };
 
@@ -212,15 +193,12 @@ ssaoBlurDescriptorSet.addImageBinding(deferredRenderPass.positionDepthAttachment
 
 //Main render pass
 struct MainRenderPass {
-#ifdef LV_BACKEND_VULKAN
+    lv::Subpass subpass;
     lv::RenderPass renderPass;
-#endif
     lv::Framebuffer framebuffer;
 
     lv::Image colorImage;
-#ifdef LV_BACKEND_VULKAN
     lv::ImageView colorImageView;
-#endif
     lv::Sampler colorSampler;
 
     //lv::DescriptorSet descriptorSet = lv::DescriptorSet(SHADER_TYPE_HDR, 0);
@@ -276,6 +254,9 @@ const uint8_t shadowStartingFrames[CASCADE_COUNT] = {
 //Time
 float lastTime = 0.0f;
 
+//Window
+bool windowResized = false;
+
 int main() {
     //Menu bar
     LvndMenuBar* menuBar = lvndCreateMenuBar();
@@ -328,15 +309,15 @@ int main() {
 	instanceCreateInfo.applicationName = "Lava Engine";
 	instanceCreateInfo.enableValidationLayers = true;
 	lv::Instance instance(instanceCreateInfo);
+#endif
 
 	lv::DeviceCreateInfo deviceCreateInfo;
 	deviceCreateInfo.window = window;
 	lv::Device device(deviceCreateInfo);
 
+#ifdef LV_BACKEND_VULKAN
 	lv::AllocatorCreateInfo allocatorCreateInfo;
 	lv::Allocator allocator(allocatorCreateInfo);
-#elif defined LV_BACKEND_METAL
-    lv::Device device;
 #endif
 
 	lv::SwapChainCreateInfo swapChainCreateInfo;
@@ -494,66 +475,77 @@ int main() {
 
     deferredRenderPass.normalRoughnessImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     deferredRenderPass.normalRoughnessImage.format = LV_FORMAT_RGBA16_SNORM;
-#ifdef LV_BACKEND_VULKAN
-    deferredRenderPass.normalRoughnessImage.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	deferredRenderPass.normalRoughnessImage.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-#endif
+    deferredRenderPass.normalRoughnessImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
     deferredRenderPass.normalRoughnessImage.init(SRC_WIDTH, SRC_HEIGHT);
-#ifdef LV_BACKEND_VULKAN
     deferredRenderPass.normalRoughnessImageView.init(&deferredRenderPass.normalRoughnessImage);
-#endif
     deferredRenderPass.normalRoughnessSampler.init();
 
     deferredRenderPass.albedoMetallicImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     deferredRenderPass.albedoMetallicImage.format = LV_FORMAT_RGBA16_UNORM;
-#ifdef LV_BACKEND_VULKAN
-    deferredRenderPass.albedoMetallicImage.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	deferredRenderPass.albedoMetallicImage.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-#endif
+    deferredRenderPass.albedoMetallicImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
     deferredRenderPass.albedoMetallicImage.init(SRC_WIDTH, SRC_HEIGHT);
-#ifdef LV_BACKEND_VULKAN
     deferredRenderPass.albedoMetallicImageView.init(&deferredRenderPass.albedoMetallicImage);
-#endif
     deferredRenderPass.albedoMetallicSampler.init();
 
     deferredRenderPass.depthImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     deferredRenderPass.depthImage.format = swapChain.depthFormat;
-#ifdef LV_BACKEND_VULKAN
-    deferredRenderPass.depthImage.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-	deferredRenderPass.depthImage.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-#endif
+    deferredRenderPass.depthImage.aspectMask = LV_IMAGE_ASPECT_DEPTH_BIT;
     deferredRenderPass.depthImage.init(SRC_WIDTH, SRC_HEIGHT);
-#ifdef LV_BACKEND_VULKAN
     deferredRenderPass.depthImageView.init(&deferredRenderPass.depthImage);
-#endif
     deferredRenderPass.depthSampler.init();
 
+    deferredRenderPass.subpass.addColorAttachment({
+        .index = 0,
+        .layout = LV_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    });
+
+    deferredRenderPass.subpass.addColorAttachment({
+        .index = 1,
+        .layout = LV_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    });
+
+    deferredRenderPass.subpass.setDepthAttachment({
+        .index = 2,
+        .layout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+    });
+
+    deferredRenderPass.renderPass.addSubpass(&deferredRenderPass.subpass);
+
+    deferredRenderPass.renderPass.addColorAttachment({
+        .format = deferredRenderPass.normalRoughnessImage.format,
+        .index = 0,
+        .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    });
+    deferredRenderPass.renderPass.addColorAttachment({
+        .format = deferredRenderPass.albedoMetallicImage.format,
+        .index = 1,
+        .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    });
+    deferredRenderPass.renderPass.setDepthAttachment({
+        .format = deferredRenderPass.depthImage.format,
+        .index = 2,
+        .loadOp = LV_ATTACHMENT_LOAD_OP_CLEAR,
+        .initialLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+        .finalLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+    });
+
+    deferredRenderPass.renderPass.init();
+
     //deferredRenderPass.framebuffer.addColorAttachment({&deferredRenderPass.positionDepthAttachment, &deferredRenderPass.positionDepthAttachmentView, 0});
-    deferredRenderPass.framebuffer.addColorAttachment(&deferredRenderPass.normalRoughnessImage,
-#ifdef LV_BACKEND_VULKAN
-    &deferredRenderPass.normalRoughnessImageView,
-#endif
-    0);
-    deferredRenderPass.framebuffer.addColorAttachment(&deferredRenderPass.albedoMetallicImage,
-#ifdef LV_BACKEND_VULKAN
-    &deferredRenderPass.albedoMetallicImageView,
-#endif
-    1);
-    deferredRenderPass.framebuffer.setDepthAttachment(&deferredRenderPass.depthImage,
-#ifdef LV_BACKEND_VULKAN
-    &deferredRenderPass.depthImageView,
-#endif
-    2, LV_ATTACHMENT_LOAD_OP_CLEAR);
+    deferredRenderPass.framebuffer.addColorAttachment({
+        .imageView = &deferredRenderPass.normalRoughnessImageView,
+        .index = 0
+    });
+    deferredRenderPass.framebuffer.addColorAttachment({
+        .imageView = &deferredRenderPass.albedoMetallicImageView,
+        .index = 1
+    });
+    deferredRenderPass.framebuffer.setDepthAttachment({
+        .imageView = &deferredRenderPass.depthImageView,
+        .index = 2
+    });
 
-#ifdef LV_BACKEND_VULKAN
-    deferredRenderPass.renderPass.init(deferredRenderPass.framebuffer.getAttachmentDescriptions());
-#endif
-
-    deferredRenderPass.framebuffer.init(
-#ifdef LV_BACKEND_VULKAN
-        &deferredRenderPass.renderPass, SRC_WIDTH, SRC_HEIGHT
-#endif
-    );
+    deferredRenderPass.framebuffer.init(&deferredRenderPass.renderPass);
 
 #ifdef LV_BACKEND_VULKAN
 	deferredRenderPass.normalRoughnessImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -568,19 +560,11 @@ int main() {
     shadowRenderPass.depthImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     shadowRenderPass.depthImage.format = swapChain.depthFormat;
     shadowRenderPass.depthImage.layerCount = CASCADE_COUNT;
-#ifdef LV_BACKEND_VULKAN
-    shadowRenderPass.depthImage.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-	shadowRenderPass.depthImage.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    shadowRenderPass.depthImageView.viewType = LV_IMAGE_VIEW_TYPE_2D_ARRAY;
-#elif defined LV_BACKEND_METAL
-	shadowRenderPass.depthImage.viewType = LV_IMAGE_VIEW_TYPE_2D_ARRAY;
-    shadowRenderPass.depthImage.storageMode = MTL::StorageModePrivate;
-#endif
+    shadowRenderPass.depthImage.aspectMask = LV_IMAGE_ASPECT_DEPTH_BIT;
+    shadowRenderPass.depthImage.viewType = LV_IMAGE_VIEW_TYPE_2D_ARRAY;
     //shadowRenderPass.depthAttachment.flags |= VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT;
     shadowRenderPass.depthImage.init(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
-#ifdef LV_BACKEND_VULKAN
     shadowRenderPass.depthImageView.init(&shadowRenderPass.depthImage);
-#endif
     shadowRenderPass.depthSampler.filter = LV_FILTER_LINEAR;
     shadowRenderPass.depthSampler.compareEnable = LV_TRUE;
     //shadowRenderPass.depthAttachmentSampler.compareOp = LV_COMPARE_OP_LESS;
@@ -607,22 +591,30 @@ int main() {
     }
     */
 
-    shadowRenderPass.framebuffer.setDepthAttachment(&shadowRenderPass.depthImage,
-#ifdef LV_BACKEND_VULKAN
-    &shadowRenderPass.depthImageView,
-#endif
-    0, LV_ATTACHMENT_LOAD_OP_CLEAR);
+    shadowRenderPass.subpass.setDepthAttachment({
+        .index = 0,
+        .layout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+    });
 
-#ifdef LV_BACKEND_VULKAN
-    shadowRenderPass.renderPass.init(shadowRenderPass.framebuffer/*s[0]*/.getAttachmentDescriptions());
-#endif
+    shadowRenderPass.renderPass.addSubpass(&shadowRenderPass.subpass);
+
+    shadowRenderPass.renderPass.setDepthAttachment({
+        .format = shadowRenderPass.depthImage.format,
+        .index = 0,
+        .loadOp = LV_ATTACHMENT_LOAD_OP_CLEAR,
+        //.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    });
+
+    shadowRenderPass.renderPass.init();
+
+    shadowRenderPass.framebuffer.setDepthAttachment({
+        .imageView = &shadowRenderPass.depthImageView,
+        .index = 0
+    });
 
     //for (uint8_t i = 0; i < CASCADE_COUNT; i++) {
-        shadowRenderPass.framebuffer/*s[i]*/.init(
-#ifdef LV_BACKEND_VULKAN
-            &shadowRenderPass.renderPass, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE
-#endif
-        );
+    shadowRenderPass.framebuffer/*s[i]*/.init(&shadowRenderPass.renderPass);
     //}
 
 #ifdef LV_BACKEND_VULKAN
@@ -650,22 +642,31 @@ int main() {
     SSAORenderPass ssaoRenderPass{};
     ssaoRenderPass.colorImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     ssaoRenderPass.colorImage.format = LV_FORMAT_R8_UNORM;
-#ifdef LV_BACKEND_VULKAN
-    ssaoRenderPass.colorImage.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    ssaoRenderPass.colorImage.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-#endif
+    ssaoRenderPass.colorImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
     ssaoRenderPass.colorImage.init(SRC_WIDTH / 2, SRC_HEIGHT / 2);
-#ifdef LV_BACKEND_VULKAN
     ssaoRenderPass.colorImageView.init(&ssaoRenderPass.colorImage);
-#endif
     ssaoRenderPass.colorSampler.filter = LV_FILTER_LINEAR;
     ssaoRenderPass.colorSampler.init();
 
-    ssaoRenderPass.framebuffer.addColorAttachment(&ssaoRenderPass.colorImage,
-#ifdef LV_BACKEND_VULKAN
-    &ssaoRenderPass.colorImageView,
-#endif
-    0);
+    ssaoRenderPass.subpass.addColorAttachment({
+        .index = 0,
+        .layout = LV_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    });
+
+    ssaoRenderPass.renderPass.addSubpass(&ssaoRenderPass.subpass);
+
+    ssaoRenderPass.renderPass.addColorAttachment({
+        .format = ssaoRenderPass.colorImage.format,
+        .index = 0,
+        .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    });
+
+    ssaoRenderPass.renderPass.init();
+
+    ssaoRenderPass.framebuffer.addColorAttachment({
+        .imageView = &ssaoRenderPass.colorImageView,
+        .index = 0
+    });
 
     /*
     ssaoRenderPass.framebuffer.setDepthAttachment({&deferredRenderPass.depthAttachment,
@@ -675,15 +676,7 @@ int main() {
     1});
     */
 
-#ifdef LV_BACKEND_VULKAN
-    ssaoRenderPass.renderPass.init(ssaoRenderPass.framebuffer.getAttachmentDescriptions());
-#endif
-
-    ssaoRenderPass.framebuffer.init(
-#ifdef LV_BACKEND_VULKAN
-        &ssaoRenderPass.renderPass, SRC_WIDTH / 2, SRC_HEIGHT / 2
-#endif
-    );
+    ssaoRenderPass.framebuffer.init(&ssaoRenderPass.renderPass);
 
 #ifdef LV_BACKEND_VULKAN
 	ssaoRenderPass.colorImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -695,37 +688,51 @@ int main() {
     SSAOBlurRenderPass ssaoBlurRenderPass{};
     ssaoBlurRenderPass.colorImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     ssaoBlurRenderPass.colorImage.format = LV_FORMAT_R8_UNORM;
-#ifdef LV_BACKEND_VULKAN
-    ssaoBlurRenderPass.colorImage.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    ssaoBlurRenderPass.colorImage.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-#endif
+    ssaoBlurRenderPass.colorImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
     ssaoBlurRenderPass.colorImage.init(SRC_WIDTH, SRC_HEIGHT);
-#ifdef LV_BACKEND_VULKAN
     ssaoBlurRenderPass.colorImageView.init(&ssaoBlurRenderPass.colorImage);
-#endif
     ssaoBlurRenderPass.colorSampler.init();
 
-    ssaoBlurRenderPass.framebuffer.addColorAttachment(&ssaoBlurRenderPass.colorImage,
-#ifdef LV_BACKEND_VULKAN
-    &ssaoBlurRenderPass.colorImageView,
-#endif
-    0);
+    ssaoBlurRenderPass.subpass.addColorAttachment({
+        .index = 0,
+        .layout = LV_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    });
 
-    ssaoBlurRenderPass.framebuffer.setDepthAttachment(&deferredRenderPass.depthImage,
-#ifdef LV_BACKEND_VULKAN
-    &deferredRenderPass.depthImageView,
-#endif
-    1, LV_ATTACHMENT_LOAD_OP_LOAD, LV_ATTACHMENT_STORE_OP_DONT_CARE);
+    ssaoBlurRenderPass.subpass.setDepthAttachment({
+        .index = 1,
+        .layout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+    });
 
-#ifdef LV_BACKEND_VULKAN
-    ssaoBlurRenderPass.renderPass.init(ssaoBlurRenderPass.framebuffer.getAttachmentDescriptions());
-#endif
+    ssaoBlurRenderPass.renderPass.addSubpass(&ssaoBlurRenderPass.subpass);
 
-    ssaoBlurRenderPass.framebuffer.init(
-#ifdef LV_BACKEND_VULKAN
-        &ssaoBlurRenderPass.renderPass, SRC_WIDTH, SRC_HEIGHT
-#endif
-    );
+    ssaoBlurRenderPass.renderPass.addColorAttachment({
+        .format = ssaoBlurRenderPass.colorImage.format,
+        .index = 0,
+        .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    });
+
+    ssaoBlurRenderPass.renderPass.setDepthAttachment({
+        .format = deferredRenderPass.depthImage.format,
+        .index = 1,
+        .loadOp = LV_ATTACHMENT_LOAD_OP_LOAD,
+        .storeOp = LV_ATTACHMENT_STORE_OP_DONT_CARE,
+        .initialLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+        .finalLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+    });
+
+    ssaoBlurRenderPass.renderPass.init();
+
+    ssaoBlurRenderPass.framebuffer.addColorAttachment({
+        .imageView = &ssaoBlurRenderPass.colorImageView,
+        .index = 0
+    });
+
+    ssaoBlurRenderPass.framebuffer.setDepthAttachment({
+        .imageView = &deferredRenderPass.depthImageView,
+        .index = 1
+    });
+
+    ssaoBlurRenderPass.framebuffer.init(&ssaoBlurRenderPass.renderPass);
 
 #ifdef LV_BACKEND_VULKAN
 	ssaoBlurRenderPass.colorImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -737,42 +744,51 @@ int main() {
     MainRenderPass mainRenderPass{};
     mainRenderPass.colorImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     mainRenderPass.colorImage.format = LV_FORMAT_RGBA32_SFLOAT;
-#ifdef LV_BACKEND_VULKAN
-    mainRenderPass.colorImage.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    mainRenderPass.colorImage.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-#endif
+    mainRenderPass.colorImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
     mainRenderPass.colorImage.init(SRC_WIDTH, SRC_HEIGHT);
-#ifdef LV_BACKEND_VULKAN
     mainRenderPass.colorImageView.init(&mainRenderPass.colorImage);
-#endif
     mainRenderPass.colorSampler.init();
 
-    //mainRenderPass.depthAttachment.usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    //mainRenderPass.depthAttachment.init(mainRenderPass.framebuffer.width, mainRenderPass.framebuffer.height, lv::g_swapChain.depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+    mainRenderPass.subpass.addColorAttachment({
+        .index = 0,
+        .layout = LV_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    });
 
-    mainRenderPass.framebuffer.addColorAttachment(&mainRenderPass.colorImage,
-#ifdef LV_BACKEND_VULKAN
-    &mainRenderPass.colorImageView,
-#endif
-    0);
+    mainRenderPass.subpass.setDepthAttachment({
+        .index = 1,
+        .layout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+    });
 
-    mainRenderPass.framebuffer.setDepthAttachment(&deferredRenderPass.depthImage,
-#ifdef LV_BACKEND_VULKAN
-    &deferredRenderPass.depthImageView,
-#endif
-    1, LV_ATTACHMENT_LOAD_OP_LOAD, LV_ATTACHMENT_STORE_OP_DONT_CARE);
-    //mainRenderPass.framebuffer.setDepthAttachment({&deferredRenderPass.depthAttachment, &deferredRenderPass.depthAttachmentView, 1});
-    //mainRenderPass.framebuffer.setDepthAttachment(&mainRenderPass.depthAttachment, 1);
+    mainRenderPass.renderPass.addSubpass(&mainRenderPass.subpass);
 
-#ifdef LV_BACKEND_VULKAN
-    mainRenderPass.renderPass.init(mainRenderPass.framebuffer.getAttachmentDescriptions());
-#endif
+    mainRenderPass.renderPass.addColorAttachment({
+        .format = mainRenderPass.colorImage.format,
+        .index = 0,
+        .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    });
 
-    mainRenderPass.framebuffer.init(
-#ifdef LV_BACKEND_VULKAN
-        &mainRenderPass.renderPass, SRC_WIDTH, SRC_HEIGHT
-#endif
-    );
+    mainRenderPass.renderPass.setDepthAttachment({
+        .format = deferredRenderPass.depthImage.format,
+        .index = 1,
+        .loadOp = LV_ATTACHMENT_LOAD_OP_LOAD,
+        .storeOp = LV_ATTACHMENT_STORE_OP_DONT_CARE,
+        .initialLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+        .finalLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+    });
+
+    mainRenderPass.renderPass.init();
+
+    mainRenderPass.framebuffer.addColorAttachment({
+        .imageView = &mainRenderPass.colorImageView,
+        .index = 0
+    });
+
+    mainRenderPass.framebuffer.setDepthAttachment({
+        .imageView = &deferredRenderPass.depthImageView,
+        .index = 1
+    });
+
+    mainRenderPass.framebuffer.init(&mainRenderPass.renderPass);
 
 #ifdef LV_BACKEND_VULKAN
 	mainRenderPass.colorImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -784,31 +800,32 @@ int main() {
     MainRenderPass hdrRenderPass{};
     hdrRenderPass.colorImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     hdrRenderPass.colorImage.format = LV_FORMAT_RGBA16_UNORM;
-#ifdef LV_BACKEND_VULKAN
-    hdrRenderPass.colorImage.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    hdrRenderPass.colorImage.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-#endif
+    hdrRenderPass.colorImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
     hdrRenderPass.colorImage.init(SRC_WIDTH, SRC_HEIGHT);
-#ifdef LV_BACKEND_VULKAN
     hdrRenderPass.colorImageView.init(&hdrRenderPass.colorImage);
-#endif
     hdrRenderPass.colorSampler.init();
 
-    hdrRenderPass.framebuffer.addColorAttachment(&hdrRenderPass.colorImage,
-#ifdef LV_BACKEND_VULKAN
-    &hdrRenderPass.colorImageView,
-#endif
-    0);
+    hdrRenderPass.subpass.addColorAttachment({
+        .index = 0,
+        .layout = LV_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    });
 
-#ifdef LV_BACKEND_VULKAN
-    hdrRenderPass.renderPass.init(hdrRenderPass.framebuffer.getAttachmentDescriptions());
-#endif
+    hdrRenderPass.renderPass.addSubpass(&hdrRenderPass.subpass);
 
-    hdrRenderPass.framebuffer.init(
-#ifdef LV_BACKEND_VULKAN
-        &hdrRenderPass.renderPass, SRC_WIDTH, SRC_HEIGHT
-#endif
-    );
+    hdrRenderPass.renderPass.addColorAttachment({
+        .format = hdrRenderPass.colorImage.format,
+        .index = 0,
+        .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    });
+
+    hdrRenderPass.renderPass.init();
+
+    hdrRenderPass.framebuffer.addColorAttachment({
+        .imageView = &hdrRenderPass.colorImageView,
+        .index = 0
+    });
+
+    hdrRenderPass.framebuffer.init(&hdrRenderPass.renderPass);
 
 #ifdef LV_BACKEND_VULKAN
 	hdrRenderPass.colorImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -976,10 +993,8 @@ int main() {
 	deferredGraphicsPipelineCreateInfo.fragmentShaderModule = &fragDeferredModule;
 #ifdef LV_BACKEND_VULKAN
 	deferredGraphicsPipelineCreateInfo.pipelineLayout = &deferredLayout;
-	deferredGraphicsPipelineCreateInfo.renderPass = &deferredRenderPass.renderPass;
-#elif defined LV_BACKEND_METAL
-    deferredGraphicsPipelineCreateInfo.framebuffer = &deferredRenderPass.framebuffer;
 #endif
+	deferredGraphicsPipelineCreateInfo.renderPass = &deferredRenderPass.renderPass;
 
     deferredGraphicsPipelineCreateInfo.vertexDescriptor = lv::MainVertex::getVertexDescriptor();
 
@@ -1025,10 +1040,8 @@ int main() {
 	shadowGraphicsPipelineCreateInfo.fragmentShaderModule = &fragShadowModule;
 #ifdef LV_BACKEND_VULKAN
 	shadowGraphicsPipelineCreateInfo.pipelineLayout = &shadowLayout;
-	shadowGraphicsPipelineCreateInfo.renderPass = &shadowRenderPass.renderPass;
-#elif defined LV_BACKEND_METAL
-    shadowGraphicsPipelineCreateInfo.framebuffer = &shadowRenderPass.framebuffer/*s[0]*/;
 #endif
+	shadowGraphicsPipelineCreateInfo.renderPass = &shadowRenderPass.renderPass;
 
     shadowGraphicsPipelineCreateInfo.vertexDescriptor = lv::MainVertex::getVertexDescriptorShadows();
 
@@ -1074,10 +1087,8 @@ int main() {
 	ssaoGraphicsPipelineCreateInfo.fragmentShaderModule = &fragSsaoModule;
 #ifdef LV_BACKEND_VULKAN
 	ssaoGraphicsPipelineCreateInfo.pipelineLayout = &ssaoLayout;
-	ssaoGraphicsPipelineCreateInfo.renderPass = &ssaoRenderPass.renderPass;
-#elif defined LV_BACKEND_METAL
-    ssaoGraphicsPipelineCreateInfo.framebuffer = &ssaoRenderPass.framebuffer;
 #endif
+	ssaoGraphicsPipelineCreateInfo.renderPass = &ssaoRenderPass.renderPass;
 
     /*
     ssaoGraphicsPipelineCreateInfo.config.depthTest = LV_TRUE;
@@ -1110,10 +1121,8 @@ int main() {
 	ssaoBlurGraphicsPipelineCreateInfo.fragmentShaderModule = &fragSsaoBlurModule;
 #ifdef LV_BACKEND_VULKAN
 	ssaoBlurGraphicsPipelineCreateInfo.pipelineLayout = &ssaoBlurLayout;
-	ssaoBlurGraphicsPipelineCreateInfo.renderPass = &ssaoBlurRenderPass.renderPass;
-#elif defined LV_BACKEND_METAL
-    ssaoBlurGraphicsPipelineCreateInfo.framebuffer = &ssaoBlurRenderPass.framebuffer;
 #endif
+	ssaoBlurGraphicsPipelineCreateInfo.renderPass = &ssaoBlurRenderPass.renderPass;
 
     ssaoBlurGraphicsPipelineCreateInfo.config.depthTestEnable = LV_TRUE;
     ssaoBlurGraphicsPipelineCreateInfo.config.depthWriteEnable = LV_FALSE;
@@ -1158,10 +1167,8 @@ int main() {
 	skylightGraphicsPipelineCreateInfo.fragmentShaderModule = &fragSkylightModule;
 #ifdef LV_BACKEND_VULKAN
 	skylightGraphicsPipelineCreateInfo.pipelineLayout = &skylightLayout;
-	skylightGraphicsPipelineCreateInfo.renderPass = &mainRenderPass.renderPass;
-#elif defined LV_BACKEND_METAL
-    skylightGraphicsPipelineCreateInfo.framebuffer = &mainRenderPass.framebuffer;
 #endif
+	skylightGraphicsPipelineCreateInfo.renderPass = &mainRenderPass.renderPass;
 
     skylightGraphicsPipelineCreateInfo.vertexDescriptor = lv::Vertex3D::getVertexDescriptor();
 
@@ -1192,10 +1199,8 @@ int main() {
 	mainGraphicsPipelineCreateInfo.fragmentShaderModule = &fragMainModule;
 #ifdef LV_BACKEND_VULKAN
 	mainGraphicsPipelineCreateInfo.pipelineLayout = &mainLayout;
-	mainGraphicsPipelineCreateInfo.renderPass = &mainRenderPass.renderPass;
-#elif defined LV_BACKEND_METAL
-    mainGraphicsPipelineCreateInfo.framebuffer = &mainRenderPass.framebuffer;
 #endif
+	mainGraphicsPipelineCreateInfo.renderPass = &mainRenderPass.renderPass;
 
     mainGraphicsPipelineCreateInfo.config.depthTestEnable = LV_TRUE;
     mainGraphicsPipelineCreateInfo.config.depthWriteEnable = LV_FALSE;
@@ -1286,10 +1291,8 @@ int main() {
 	hdrGraphicsPipelineCreateInfo.fragmentShaderModule = &fragHdrModule;
 #ifdef LV_BACKEND_VULKAN
 	hdrGraphicsPipelineCreateInfo.pipelineLayout = &hdrLayout;
-	hdrGraphicsPipelineCreateInfo.renderPass = &hdrRenderPass.renderPass;
-#elif defined LV_BACKEND_METAL
-    hdrGraphicsPipelineCreateInfo.framebuffer = &hdrRenderPass.framebuffer;
 #endif
+	hdrGraphicsPipelineCreateInfo.renderPass = &hdrRenderPass.renderPass;
 
 	//hdrGraphicsPipelineCreateInfo.vertexBindingDescriptions = MainVertex::getBindingDescriptions();
 	//hdrGraphicsPipelineCreateInfo.vertexAttributeDescriptions = MainVertex::getAttributeDescriptions();
@@ -1654,6 +1657,58 @@ int main() {
 
         //lvndSetWindowFullscreenMode(window, true);
 
+        if (windowResized) {
+            //Wait for device
+#ifdef LV_BACKEND_VULKAN
+            lv::g_device->waitIdle();
+#endif
+            
+            lv::g_swapChain->resize(window);
+
+            /*
+            camera.aspectRatio = (float)window.width / (float)window.height;
+
+            //Resizing framebuffers
+            deferredRenderPass.framebuffer.resize(window.width, window.height);
+            
+            ssaoRenderPass.framebuffer.resize(window.width, window.height);
+            
+            ssaoBlurRenderPass.framebuffer.resize(window.width, window.height);
+
+            mainRenderPass.framebuffer.resize(window.width, window.height);
+
+            //mainDescriptorSet0.reset();
+            //SETUP_MAIN_0_DESCRIPTORS
+            //mainDescriptorSet0.init();
+
+            ssaoDescriptorSet.reset();
+            SETUP_SSAO_DESCRIPTORS
+            ssaoDescriptorSet.init();
+
+            ssaoBlurDescriptorSet.reset();
+            SETUP_SSAO_BLUR_DESCRIPTORS
+            ssaoBlurDescriptorSet.init();
+
+            mainDescriptorSet2.reset();
+            SETUP_MAIN_2_DESCRIPTORS
+            mainDescriptorSet2.init();
+
+            hdrDescriptorSet.reset();
+            SETUP_HDR_DESCRIPTORS
+            hdrDescriptorSet.init();
+
+            //Editor
+            editor.resize();
+
+            //Setting the total height for all viewports that do not match the size of framebuffer
+            //guiViewport.setTotalHeight(window.height);
+
+            mainViewport.setViewport(0, 0, window.width, window.height);
+            */
+
+            windowResized = false;
+        }
+
         //Mouse
 		int32_t mouseX, mouseY;
 		lvndGetCursorPosition(window, &mouseX, &mouseY);
@@ -1702,7 +1757,7 @@ int main() {
 #ifdef LV_BACKEND_VULKAN
         deferredVPUniformBuffer.upload(&viewProj);
 #elif defined LV_BACKEND_METAL
-        deferredGraphicsPipeline.uploadPushConstants(&viewProj, 1, MSL_SIZEOF(glm::mat4), LV_SHADER_STAGE_VERTEX_BIT);
+        deferredGraphicsPipeline.uploadPushConstants(&viewProj, 1, sizeof(glm::mat4), LV_SHADER_STAGE_VERTEX_BIT);
 #endif
 
         //For each model
@@ -1779,7 +1834,7 @@ int main() {
 #ifdef LV_BACKEND_VULKAN
                 shadowVPUniformBuffers[i].upload(&pcShadowVP);
 #elif defined LV_BACKEND_METAL
-                shadowGraphicsPipeline.uploadPushConstants(&pcShadowVP, 0, MSL_SIZEOF(PCShadowVP), LV_SHADER_STAGE_VERTEX_BIT);
+                shadowGraphicsPipeline.uploadPushConstants(&pcShadowVP, 0, sizeof(PCShadowVP), LV_SHADER_STAGE_VERTEX_BIT);
 #endif
 
                 //For each model
@@ -1844,7 +1899,7 @@ int main() {
         PCSsaoVP pcSsaoVP{g_game->scene().camera->projection, g_game->scene().camera->view, glm::inverse(viewProj)};
         ssaoGraphicsPipeline.uploadPushConstants(&pcSsaoVP, 0
 #ifdef LV_BACKEND_METAL
-        , MSL_SIZEOF(PCSsaoVP), LV_SHADER_STAGE_FRAGMENT_BIT
+        , sizeof(PCSsaoVP), LV_SHADER_STAGE_FRAGMENT_BIT
 #endif
         );
 
@@ -1890,7 +1945,7 @@ int main() {
 #ifdef LV_BACKEND_VULKAN
         skylightGraphicsPipeline.uploadPushConstants(&skylightViewProj, 0);
 #elif defined LV_BACKEND_METAL
-        skylightGraphicsPipeline.uploadPushConstants(&skylightViewProj, 0, MSL_SIZEOF(glm::mat4), LV_SHADER_STAGE_VERTEX_BIT);
+        skylightGraphicsPipeline.uploadPushConstants(&skylightViewProj, 0, sizeof(glm::mat4), LV_SHADER_STAGE_VERTEX_BIT);
 #endif
 
 		//swapChain.activeFramebuffer->encoder->setCullMode(LV_CULL_MODE_NONE);
@@ -1943,7 +1998,7 @@ int main() {
 #ifdef LV_BACKEND_VULKAN
         mainVPUniformBuffer.upload(&uboMainVP);
 #elif defined LV_BACKEND_METAL
-        mainGraphicsPipeline.uploadPushConstants(&uboMainVP, 2, MSL_SIZEOF(UBOMainVP), LV_SHADER_STAGE_FRAGMENT_BIT);
+        mainGraphicsPipeline.uploadPushConstants(&uboMainVP, 2, sizeof(UBOMainVP), LV_SHADER_STAGE_FRAGMENT_BIT);
 #endif
 
         directLight.uploadUniforms();
@@ -1954,7 +2009,7 @@ int main() {
 #elif defined LV_BACKEND_METAL
         directLight.lightUniformBuffer.bindToFragmentShader(0);
 
-        mainGraphicsPipeline.uploadPushConstants(shadowVPs.data(), 1, shadowVPs.size() * MSL_SIZEOF(glm::mat4), LV_SHADER_STAGE_FRAGMENT_BIT);
+        mainGraphicsPipeline.uploadPushConstants(shadowVPs.data(), 1, shadowVPs.size() * sizeof(glm::mat4), LV_SHADER_STAGE_FRAGMENT_BIT);
 #endif
 
         swapChain.renderFullscreenTriangle();
@@ -2156,54 +2211,7 @@ int main() {
 
 //Callbacks
 void windowResizeCallback(LvndWindow* window, uint16_t width, uint16_t height) {
-    //Wait for device
-#ifdef LV_BACKEND_VULKAN
-    lv::g_device->waitIdle();
-#endif
-    
-    lv::g_swapChain->resize(window);
-
-    /*
-    camera.aspectRatio = (float)window.width / (float)window.height;
-
-    //Resizing framebuffers
-    deferredRenderPass.framebuffer.resize(window.width, window.height);
-    
-    ssaoRenderPass.framebuffer.resize(window.width, window.height);
-    
-    ssaoBlurRenderPass.framebuffer.resize(window.width, window.height);
-
-    mainRenderPass.framebuffer.resize(window.width, window.height);
-
-    //mainDescriptorSet0.reset();
-    //SETUP_MAIN_0_DESCRIPTORS
-    //mainDescriptorSet0.init();
-
-    ssaoDescriptorSet.reset();
-    SETUP_SSAO_DESCRIPTORS
-    ssaoDescriptorSet.init();
-
-    ssaoBlurDescriptorSet.reset();
-    SETUP_SSAO_BLUR_DESCRIPTORS
-    ssaoBlurDescriptorSet.init();
-
-    mainDescriptorSet2.reset();
-    SETUP_MAIN_2_DESCRIPTORS
-    mainDescriptorSet2.init();
-
-    hdrDescriptorSet.reset();
-    SETUP_HDR_DESCRIPTORS
-    hdrDescriptorSet.init();
-
-    //Editor
-    editor.resize();
-
-    //Setting the total height for all viewports that do not match the size of framebuffer
-    //guiViewport.setTotalHeight(window.height);
-
-    mainViewport.setViewport(0, 0, window.width, window.height);
-    */
-    //std::cout << (int)width << ", " << (int)height << " : " << window->framebufferWidth << ", " << window->framebufferHeight << " : " << window->framebufferScaleX << ", " << window->framebufferScaleY << std::endl;
+    windowResized = true;
 }
 
 void scrollCallback(LvndWindow* window, double xoffset, double yoffset) {
