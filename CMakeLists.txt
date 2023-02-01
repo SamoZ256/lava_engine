@@ -4,6 +4,12 @@ set(PROJECT_NAME lava_engine)
 
 project(${PROJECT_NAME})
 
+#if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+#    message("Using clang")
+#elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+#    message("Using gcc")
+#endif ()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(EXECUTABLE_OUTPUT_PATH "${CMAKE_SOURCE_DIR}/bin")
@@ -12,6 +18,13 @@ add_compile_options(
     -O3
     -Wno-deprecated-volatile
 )
+
+set(IMGUI_PLATFORM_FILE)
+if (APPLE)
+    set(IMGUI_PLATFORM_FILE external/imgui/used_backends/imgui_impl_osx.mm)
+elseif (WIN32)
+    set(IMGUI_PLATFORM_FILE external/imgui/used_backends/imgui_impl_win32.cpp)
+endif ()
 
 option(BACKEND_VULKAN "Build using vulkan backend" OFF)
 option(BACKEND_METAL "Build using metal backend" OFF)
@@ -30,14 +43,6 @@ if (BACKEND_VULKAN)
     include_directories(
         "external/vma/include"
     )
-
-    if (APPLE)
-        include_directories(
-            "/Users/samuliak/VulkanSDK/1.3.236.0/macOS/include"
-        )
-    elseif (WIN32)
-        find_package(Vulkan REQUIRED)
-    endif ()
 elseif (BACKEND_METAL)
     message("Building using metal backend")
 
@@ -58,34 +63,33 @@ file(GLOB src
     "external/imgui/*.cpp"
     "external/imgui/misc/cpp/*.cpp"
     "external/imguizmo/include/ImGuizmo/*.cpp"
-    "external/imgui/used_backends/imgui_impl_lvnd.cpp"
-    "external/imgui/used_backends/imgui_impl_osx.mm"
 )
 
 add_executable(${PROJECT_NAME}
     src/main.cpp
+    external/imgui/used_backends/imgui_impl_lvnd.cpp
+    ${IMGUI_PLATFORM_FILE}
     ${src}
 )
 
 find_package(Bullet REQUIRED)
 
-find_package(Assimp REQUIRED)
+find_package(Assimp)
 
 find_package(glm REQUIRED)
 
 include_directories(
-    "/Users/samuliak/Documents/lava_window/include"
+    "/home/samuliak/Documents/lava_window/include"
+    "/home/samuliak/Documents/nativefiledialog/src/include"
+    "/home/samuliak/Documents/lava_core/include"
+    "/home/samuliak/Documents/lava_utils/include"
     "external/stb/include"
     "external/imgui"
     "external/imgui/used_backends"
     "external/imgui/misc/cpp"
-    "external/ImGuizmo/include"
-    "external/entt/include"
+    "external/imguizmo/include"
+    "external/entt/src"
     "external/json/include"
-    "/Users/samuliak/Documents/nativefiledialog/src/include"
-    "external/ImGuizmo/include"
-    "/Users/samuliak/Documents/lava_core/include"
-    "/Users/samuliak/Documents/lava_utils/include"
     ${GLM_INCLUDE_DIRS}
     ${ASSIMP_INCLUDE_DIRS}
     ${BULLET_INCLUDE_DIRS}
@@ -94,21 +98,16 @@ include_directories(
 find_library (
     NFD_LIB
     NAMES nfd libnfd
-    HINTS "/Users/samuliak/Documents/nativefiledialog/src"
+    HINTS "/home/samuliak/Documents/nativefiledialog/build/lib/Release/x64"
     NO_DEFAULT_PATH
 )
 
 find_library(
     LVND_LIB
     NAMES lvnd liblvnd
-    HINTS "/Users/samuliak/Documents/lava_window/lib"
+    HINTS "/home/samuliak/Documents/lava_window/lib"
     NO_DEFAULT_PATH
 )
-
-find_library(NS_FOUNDATION_LIB Foundation)
-find_library(QUARTZCORE_LIB QuartzCore)
-find_library(UNIFORMTYPEIDENTIFIERS_LIB UniformTypeIdentifiers)
-find_library(APPKIT_LIB AppKit)
 
 message(STATUS "LVND_LIB: [${LVND_LIB}]")
 message(STATUS "NFD_LIB: [${NFD_LIB}]")
@@ -116,23 +115,49 @@ message(STATUS "NFD_LIB: [${NFD_LIB}]")
 find_library (
     LAVA_CORE_LIB
     NAMES lavacore liblavacore
-    HINTS "/Users/samuliak/Documents/lava_core/lib"
+    HINTS "/home/samuliak/Documents/lava_core/lib"
+    NO_DEFAULT_PATH
+)
+    
+find_library (
+    LAVA_UTILS_LIB
+    NAMES lavautils liblavautils
+    HINTS "/home/samuliak/Documents/lava_utils/lib/vulkan"
     NO_DEFAULT_PATH
 )
 
 target_link_libraries(${PROJECT_NAME} PUBLIC
-    "-framework GameController"
     ${NFD_LIB}
-    ${NS_FOUNDATION_LIB}
-    ${QUARTZCORE_LIB}
-    ${UNIFORMTYPEIDENTIFIERS_LIB}
-    ${APPKIT_LIB}
     ${LVND_LIB}
     ${LAVA_CORE_LIB}
+    ${LAVA_UTILS_LIB}
 )
+
+if (APPLE)
+    find_library(NS_FOUNDATION_LIB Foundation)
+    find_library(QUARTZCORE_LIB QuartzCore)
+    find_library(UNIFORMTYPEIDENTIFIERS_LIB UniformTypeIdentifiers)
+    find_library(APPKIT_LIB AppKit)
+
+    target_link_libraries(${PROJECT_NAME} PUBLIC
+        "-framework GameController"
+        ${NS_FOUNDATION_LIB}
+        ${QUARTZCORE_LIB}
+        ${UNIFORMTYPEIDENTIFIERS_LIB}
+        ${APPKIT_LIB}
+    )
+endif ()
 
 if (BACKEND_VULKAN)
     set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "mainVK")
+
+    if (APPLE)
+        include_directories(
+            "/Users/samuliak/VulkanSDK/1.3.236.0/macOS/include"
+        )
+    else ()
+        find_package(Vulkan REQUIRED)
+    endif ()
 
     if (APPLE)
         find_library (
@@ -151,17 +176,9 @@ if (BACKEND_VULKAN)
         NAMES vulkan libvulkan
         HINTS "/usr/local/Cellar/Vulkan/macOS/lib"
     )
-    
-    find_library (
-        LAVA_UTILS_LIB
-        NAMES lavautils liblavautils
-        HINTS "/Users/samuliak/Documents/lava_utils/lib/vulkan"
-        NO_DEFAULT_PATH
-    )
 
     target_link_libraries(${PROJECT_NAME} PUBLIC
         ${Vulkan_LIBRARIES}
-        ${LAVA_UTILS_LIB}
     )
 elseif (BACKEND_METAL)
     set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "mainMTL")
@@ -172,16 +189,8 @@ elseif (BACKEND_METAL)
 
     find_library(METAL_LIB Metal)
 
-    find_library (
-        LAVA_UTILS_LIB
-        NAMES lavautils liblavautils
-        HINTS "/Users/samuliak/Documents/lava_utils/lib/metal"
-        NO_DEFAULT_PATH
-    )
-
     target_link_libraries(${PROJECT_NAME} PUBLIC
         ${METAL_LIB}
-        ${LAVA_UTILS_LIB}
     )
 endif ()
 

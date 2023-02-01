@@ -12,7 +12,7 @@
 
 #include <ImGuizmo/ImGuizmo.h>
 
-#include "nfd.hpp"
+#include "nfd.h"
 
 #include "lvutils/entity/tag.hpp"
 #include "lvutils/entity/transform.hpp"

@@ -1,7 +1,7 @@
 #ifndef SCENE_H
 #define SCENE_H
 
-#include <entt/entt.hpp>
+#include <entt/entity/registry.hpp>
 
 #include <json/json.h>
 
