@@ -79,10 +79,10 @@ find_package(Assimp)
 find_package(glm REQUIRED)
 
 include_directories(
-    "/home/samuliak/Documents/lava_window/include"
-    "/home/samuliak/Documents/nativefiledialog/src/include"
-    "/home/samuliak/Documents/lava_core/include"
-    "/home/samuliak/Documents/lava_utils/include"
+    "/Users/samuliak/Documents/lava_window/include"
+    "/Users/samuliak/Documents/nativefiledialog/src/include"
+    "/Users/samuliak/Documents/lava_core/include"
+    "/Users/samuliak/Documents/lava_utils/include"
     "external/stb/include"
     "external/imgui"
     "external/imgui/used_backends"
@@ -98,14 +98,14 @@ include_directories(
 find_library (
     NFD_LIB
     NAMES nfd libnfd
-    HINTS "/home/samuliak/Documents/nativefiledialog/build/lib/Release/x64"
+    HINTS "/Users/samuliak/Documents/nativefiledialog/src/include"
     NO_DEFAULT_PATH
 )
 
 find_library(
     LVND_LIB
     NAMES lvnd liblvnd
-    HINTS "/home/samuliak/Documents/lava_window/lib"
+    HINTS "/Users/samuliak/Documents/lava_window/lib"
     NO_DEFAULT_PATH
 )
 
@@ -115,14 +115,14 @@ message(STATUS "NFD_LIB: [${NFD_LIB}]")
 find_library (
     LAVA_CORE_LIB
     NAMES lavacore liblavacore
-    HINTS "/home/samuliak/Documents/lava_core/lib"
+    HINTS "/Users/samuliak/Documents/lava_core/lib"
     NO_DEFAULT_PATH
 )
     
 find_library (
     LAVA_UTILS_LIB
     NAMES lavautils liblavautils
-    HINTS "/home/samuliak/Documents/lava_utils/lib/vulkan"
+    HINTS "/Users/samuliak/Documents/lava_utils/lib/vulkan"
     NO_DEFAULT_PATH
 )
 
@@ -131,6 +131,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     ${LVND_LIB}
     ${LAVA_CORE_LIB}
     ${LAVA_UTILS_LIB}
+    ${BULLET_LIBRARIES}
 )
 
 if (APPLE)

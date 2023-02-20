@@ -5,7 +5,12 @@
 
 #include <json/json.h>
 
-#include "lvcore/lvcore.hpp"
+#include "lvcore/core/instance.hpp"
+#include "lvcore/core/device.hpp"
+#include "lvcore/core/swap_chain.hpp"
+#include "lvcore/core/pipeline_layout.hpp"
+#include "lvcore/core/graphics_pipeline.hpp"
+
 #include "lvcore/filesystem/filesystem.hpp"
 
 #include "lvutils/libraries/glm.hpp"
@@ -19,6 +24,20 @@ namespace nh = nlohmann;
 enum SceneState {
     SCENE_STATE_EDITOR,
     SCENE_STATE_RUNTIME
+};
+
+//Graphics
+#define AMBIENT_OCCLUSION_TYPE_COUNT 3
+
+enum AmbientOcclusionType {
+    AMBIENT_OCCLUSION_TYPE_NONE,
+    AMBIENT_OCCLUSION_TYPE_SSAO,
+    AMBIENT_OCCLUSION_TYPE_HBAO
+};
+
+struct GraphicsSettings {
+    AmbientOcclusionType aoType = AMBIENT_OCCLUSION_TYPE_HBAO;
+    AmbientOcclusionType prevAoType = AMBIENT_OCCLUSION_TYPE_HBAO;
 };
 
 class Scene {
@@ -47,6 +66,11 @@ public:
     static unsigned int meshDataFilenameIndex;
 
     static std::string meshDataDir;
+
+    //Graphics
+    GraphicsSettings graphicsSettings;
+
+    static std::string aoTypeStr[AMBIENT_OCCLUSION_TYPE_COUNT];
 
 #ifdef LV_BACKEND_VULKAN
     lv::PipelineLayout& deferredLayout;

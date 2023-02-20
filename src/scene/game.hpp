@@ -21,13 +21,9 @@ public:
     std::string filename;
     std::string assetPath;
 
-#ifdef LV_BACKEND_VULKAN
     lv::PipelineLayout& deferredLayout;
 
     Game(lv::PipelineLayout& aDeferredLayout) : deferredLayout(aDeferredLayout) { g_game = this; }
-#elif defined LV_BACKEND_METAL
-    Game() { g_game = this; }
-#endif
 
     void destroy();
 

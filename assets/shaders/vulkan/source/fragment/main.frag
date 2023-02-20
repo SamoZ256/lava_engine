@@ -6,10 +6,7 @@ layout (location = 0) out vec4 FragColor;
 
 layout (location = 0) in vec2 inTexCoord;
 
-//Specialization constants
 #define CASCADE_COUNT 3
-//#define SHADOW_FAR_PLANE 100.0
-//const float CASCADE_LEVELS[CASCADE_COUNT] = float[] (SHADOW_FAR_PLANE * 0.08, SHADOW_FAR_PLANE * 0.22, SHADOW_FAR_PLANE * 0.5, SHADOW_FAR_PLANE);
 
 layout (set = 0, binding = 0) uniform LIGHT {
     vec4 color;
@@ -133,7 +130,7 @@ vec3 calcDirectLight(vec3 norm, vec3 viewDir, vec3 F0, vec3 albedo, float roughn
 
     float NdotL = max(dot(norm, L), 0.0);
 
-    return (kD * albedo / PI + spec) * radiance * NdotL * u_light.color.rgb * u_light.color.a;
+    return (kD * albedo / PI + spec) * radiance * NdotL * u_light.color.rgb * u_light.color.a * 2.0;
 }
 
 /*
@@ -165,13 +162,6 @@ float getVisibility(vec3 position, vec3 normal) {
     if (layer == -1) {
         return 1.0;
     }
-
-    /*
-    shadowCoord = u_shadow.VPs[layer] * vec4(position, 1.0);
-    shadowCoord.xyz /= shadowCoord.w;
-    shadowCoord.xy = shadowCoord.xy * 0.5 + 0.5;
-    shadowCoord.y = 1.0 - shadowCoord.y;
-    */
 
     float layerRatio = 1.0;
     if (layer != 0)
@@ -218,23 +208,9 @@ float getVisibility(vec3 position, vec3 normal) {
     return texture(u_shadowMap, vec4(shadowCoord.xy, layer, shadowCoord.z - bias));
 }
 
-//Position reconstruction
-/*
-vec3 reconstructPosFromDepth(in float depth) {
-    vec3 posInViewProj = vec3(inTexCoord.x * 2.0 - 1.0, (1.0 - inTexCoord.y) * 2.0 - 1.0, depth);
-    vec4 position = u_vp.invViewProj * vec4(posInViewProj, 1.0);
-    position.xyz /= position.w;
-
-    return position.xyz;
-}
-*/
-
 void main() {
     //Unpacking G-Buffers
-	//vec4 positionDepth = texture(u_positionDepth, inTexCoord);
-	//vec3 position = positionDepth.xyz;
 	float depth = texture(u_depth, inTexCoord).r;
-    //if (depth == 1.0) discard;
     vec3 position = reconstructPosFromDepth(u_vp.invViewProj, inTexCoord, depth);
 
 	vec4 normalRoughness = texture(u_normalRoughness, inTexCoord);
@@ -249,8 +225,6 @@ void main() {
     vec3 posToCamera = u_vp.cameraPos - position;
     float distToCamera = length(posToCamera);
     vec3 viewDir = posToCamera / distToCamera;
-
-    //vec3 albedo = u_material.albedo.rgb * texture(u_albedoTexture, inTexCoord).rgb;
 
     //F0
     vec3 F0 = vec3(0.04);
@@ -278,58 +252,6 @@ void main() {
 
     result += ambient;
 
-    //Shadows
-    /*
-    vec4 lightSpaceCoord = u_shadow.viewProj * vec4(position, 1.0);
-    vec3 shadowCoord = lightSpaceCoord.xyz / lightSpaceCoord.w;
-    shadowCoord.xy = shadowCoord.xy * 0.5 + 0.5;
-    shadowCoord.y = 1.0 - shadowCoord.y;
-
-    float visibility = 1.0;
-    float bias = 0.0001;
-    if (shadowCoord.x >= 0.0 && shadowCoord.x <= 1.0 && shadowCoord.y >= 0.0 && shadowCoord.y <= 1.0) {
-        if (shadowCoord.z - bias > texture(u_shadowMap, shadowCoord.xy).x)
-            visibility = 0.5;
-    }
-    */
-
     //Output
     FragColor = vec4(result, 1.0);
-    //float shadowVal = texture(u_shadowMap, inTexCoord).x;
-    //if (shadowVal == 1.0) discard;
-    //FragColor = vec4(vec3(shadowVal), 1.0);
-    //FragColor = vec4(vec3(visibility), 1.0);
-    /*
-    vec4 lightSpaceCoord = u_shadow.VPs[0] * vec4(position, 1.0);
-    vec3 shadowCoord = lightSpaceCoord.xyz / lightSpaceCoord.w;
-    shadowCoord.xy = shadowCoord.xy * 0.5 + 0.5;
-    shadowCoord.y = 1.0 - shadowCoord.y;
-
-    FragColor.rgb = vec3(texture(u_shadowMap, vec3(shadowCoord.xy, 0)).x);
-    */
-    
-    /*
-    int layer = -1;
-    for (int i = 0; i < CASCADE_COUNT; i++) {
-        if (abs(length(posToCamera)) < CASCADE_LEVELS[i]) {
-            layer = i;
-            break;
-        }
-    }
-    vec3 layerColor = vec3(0.1, 0.1, 0.1);
-    if (layer == 0)
-        layerColor = vec3(1.0, 0.7, 0.7);
-    else if (layer == 1)
-        layerColor = vec3(0.7, 1.0, 0.7);
-    else if (layer == 2)
-        layerColor = vec3(0.7, 0.7, 1.0);
-    FragColor.rgb *= layerColor;
-    */
-    //FragColor = vec4(vec3(depth / 100.0), 1.0);
-    //FragColor = mix(FragColor, vec4(vec3(texture(u_shadowMap, vec3(inTexCoord, 0)).r), 1.0), 0.95);
-    //FragColor = vec4(vec3(texture(u_ssaoTex, inTexCoord).r), 1.0);
-    //FragColor.rgb = position;
-    //FragColor.rgb = vec3(depth / 100.0);
-    //FragColor.rgb = vec3(texture(u_ssaoTex, inTexCoord).r);
-    //FragColor.rgb = vec3(length(posToCamera) / 100.0);
 }

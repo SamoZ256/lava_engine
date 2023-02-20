@@ -1,0 +1,35 @@
+{
+    "descriptorSets": {
+        "1": {
+            "bindings": {
+                "0": {
+                    "bufferBinding": 0,
+                    "descriptorType": "uniformBuffer"
+                }
+            },
+            "maxBinding": "0"
+        },
+        "2": {
+            "bindings": {
+                "0": {
+                    "descriptorType": "combinedImageSampler",
+                    "samplerBinding": 2,
+                    "textureBinding": 2
+                },
+                "1": {
+                    "descriptorType": "combinedImageSampler",
+                    "samplerBinding": 1,
+                    "textureBinding": 1
+                },
+                "2": {
+                    "descriptorType": "combinedImageSampler",
+                    "samplerBinding": 0,
+                    "textureBinding": 0
+                }
+            },
+            "maxBinding": "2"
+        }
+    },
+    "maxSet": "2",
+    "stage": "unknown"
+}

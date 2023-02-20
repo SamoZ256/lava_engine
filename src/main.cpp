@@ -11,7 +11,13 @@
 #endif
 #include "lvnd/lvnd.h"
 
+#include "lvcore/core/allocator.hpp"
 #include "lvcore/core/shader_module.hpp"
+#include "lvcore/core/command_buffer.hpp"
+#include "lvcore/core/semaphore.hpp"
+#include "lvcore/core/framebuffer.hpp"
+#include "lvcore/core/viewport.hpp"
+#include "lvcore/core/shader_bundle.hpp"
 
 #include "lvutils/camera/arcball_camera.hpp"
 
@@ -22,6 +28,8 @@
 #include "lvutils/light/direct_light.hpp"
 
 #include "lvutils/skylight/skylight.hpp"
+
+#include "lvutils/math/math.hpp"
 
 #include "editor/editor.hpp"
 
@@ -41,7 +49,7 @@ void scrollCallback(LvndWindow* window, double xoffset, double yoffset);
 //Shadows
 std::vector<glm::vec4> getFrustumCorners(const glm::mat4& proj, const glm::mat4& view);
 
-void getLightMatrix(glm::vec3 lightDir, float nearPlane, float farPlane, bool firstCascade);
+void getLightMatrix(glm::vec3 lightDir, float nearPlane, float farPlane, uint8_t index);
 
 void getLightMatrices(glm::vec3 lightDir);
 
@@ -62,10 +70,14 @@ void duplicateEntity();
 #define SHADOW_MAP_SIZE 2048
 #define CASCADE_COUNT 3
 #define SHADOW_FAR_PLANE 64.0f
-//#define SHADOW_FRAME_COUNT 4
+#define SHADOW_FRAME_COUNT 4
 
-//SSAO
-#define SSAO_NOISE_TEX_SIZE 8
+//AO
+#define AO_NOISE_TEX_SIZE 8
+#define SSAO_KERNEL_SIZE 24
+
+//Bloom
+#define BLOOM_MIP_COUNT 7
 
 //Window
 #define SRC_WIDTH 1920
@@ -80,33 +92,18 @@ struct UBOMainVP {
     glm::vec3 cameraPos;
 };
 
+/*
 struct PCShadowVP {
     glm::mat4 viewProj;
     int layerIndex;
 };
+*/
 
 struct PCSsaoVP {
     glm::mat4 projection;
 	glm::mat4 view;
     glm::mat4 invViewProj;
 };
-
-//#define SHADER_COUNT 10
-
-/*
-enum ShaderType {
-    SHADER_TYPE_EQUI_TO_CUBE,
-    SHADER_TYPE_IRRADIANCE,
-    SHADER_TYPE_PREFILTERED,
-    SHADER_TYPE_DEFERRED,
-    SHADER_TYPE_SHADOW,
-    SHADER_TYPE_SSAO,
-    SHADER_TYPE_SSAO_BLUR,
-    SHADER_TYPE_SKYLIGHT,
-  	SHADER_TYPE_MAIN,
-    SHADER_TYPE_HDR
-};
-*/
 
 //Render passes
 
@@ -115,6 +112,7 @@ struct DeferredRenderPass {
     lv::Subpass subpass;
     lv::RenderPass renderPass;
     lv::Framebuffer framebuffer;
+    lv::CommandBuffer commandBuffer;
 
     lv::Image normalRoughnessImage;
     lv::ImageView normalRoughnessImageView;
@@ -128,35 +126,23 @@ struct DeferredRenderPass {
     lv::ImageView depthImageView;
     lv::Sampler depthSampler;
 
-    //lv::DescriptorSet descriptorSet = lv::DescriptorSet(SHADER_TYPE_MAIN, 0);
+    /*
+    lv::Image halfDepthImage;
+    lv::ImageView halfDepthImageView;
+    lv::Sampler halfDepthSampler;
+    */
 };
-
-#define SETUP_MAIN_0_DESCRIPTORS \
-mainDescriptorSet0.addBinding(directLight.lightUniformBuffer.descriptorInfo(), 0); \
-mainDescriptorSet0.addBinding(mainVPUniformBuffer.descriptorInfo(), 1); \
-mainDescriptorSet0.addBinding(mainShadowUniformBuffer.descriptorInfo(), 2); \
-mainDescriptorSet0.addBinding(shadowRenderPass.depthSampler.descriptorInfo(shadowRenderPass.depthImageView), 3); \
-
-#define SETUP_MAIN_1_DESCRIPTORS \
-mainDescriptorSet1.addBinding(skylight.irradianceMapSampler.descriptorInfo(skylight.irradianceMapImageView), 0); \
-mainDescriptorSet1.addBinding(skylight.prefilteredMapSampler.descriptorInfo(skylight.prefilteredMapImageView), 1); \
-mainDescriptorSet1.addBinding(brdfLutTexture.sampler.descriptorInfo(brdfLutTexture.imageView), 2);
-
-#define SETUP_MAIN_2_DESCRIPTORS \
-mainDescriptorSet2.addBinding(deferredRenderPass.depthSampler.descriptorInfo(deferredRenderPass.depthImageView, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL), 0); \
-mainDescriptorSet2.addBinding(deferredRenderPass.normalRoughnessSampler.descriptorInfo(deferredRenderPass.normalRoughnessImageView), 1); \
-mainDescriptorSet2.addBinding(deferredRenderPass.albedoMetallicSampler.descriptorInfo(deferredRenderPass.albedoMetallicImageView), 2); \
-mainDescriptorSet2.addBinding(ssaoBlurRenderPass.colorSampler.descriptorInfo(ssaoBlurRenderPass.colorImageView), 3);
 
 //Shadow render pass
 struct ShadowRenderPass {
     lv::Subpass subpass;
     lv::RenderPass renderPass;
-    lv::Framebuffer framebuffer;//s[CASCADE_COUNT];
-    //lv::ImageView depthAttachmentViews[CASCADE_COUNT];
+    lv::Framebuffer framebuffers[CASCADE_COUNT];
+    lv::CommandBuffer commandBuffer;
 
     lv::Image depthImage;
     lv::ImageView depthImageView;
+    lv::ImageView depthImageViews[CASCADE_COUNT];
     lv::Sampler depthSampler;
 };
 
@@ -165,6 +151,7 @@ struct SSAORenderPass {
     lv::Subpass subpass;
     lv::RenderPass renderPass;
     lv::Framebuffer framebuffer;
+    lv::CommandBuffer commandBuffer;
 
     lv::Image colorImage;
     lv::ImageView colorImageView;
@@ -172,15 +159,16 @@ struct SSAORenderPass {
 };
 
 #define SETUP_SSAO_DESCRIPTORS \
-ssaoDescriptorSet.addBinding(deferredRenderPass.depthSampler.descriptorInfo(deferredRenderPass.depthImageView, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL), 0); /*disasmComputePass.outputColorAttachmentSampler.descriptorInfo(disasmComputePass.outputColorAttachmentView)*/ \
+ssaoDescriptorSet.addBinding(deferredRenderPass./*halfD*/depthSampler.descriptorInfo(deferredRenderPass./*halfD*/depthImageView, LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL), 0); /*disasmComputePass.outputColorAttachmentSampler.descriptorInfo(disasmComputePass.outputColorAttachmentView)*/ \
 ssaoDescriptorSet.addBinding(deferredRenderPass.normalRoughnessSampler.descriptorInfo(deferredRenderPass.normalRoughnessImageView), 1); \
-ssaoDescriptorSet.addBinding(ssaoNoiseTex.sampler.descriptorInfo(ssaoNoiseTex.imageView), 2);
+ssaoDescriptorSet.addBinding(aoNoiseTex.sampler.descriptorInfo(aoNoiseTex.imageView), 2);
 
 //SSAO blur render pass
 struct SSAOBlurRenderPass {
     lv::Subpass subpass;
     lv::RenderPass renderPass;
     lv::Framebuffer framebuffer;
+    lv::CommandBuffer commandBuffer;
 
     lv::Image colorImage;
     lv::ImageView colorImageView;
@@ -196,6 +184,7 @@ struct MainRenderPass {
     lv::Subpass subpass;
     lv::RenderPass renderPass;
     lv::Framebuffer framebuffer;
+    lv::CommandBuffer commandBuffer;
 
     lv::Image colorImage;
     lv::ImageView colorImageView;
@@ -204,8 +193,43 @@ struct MainRenderPass {
     //lv::DescriptorSet descriptorSet = lv::DescriptorSet(SHADER_TYPE_HDR, 0);
 };
 
+#define SETUP_MAIN_0_DESCRIPTORS \
+mainDescriptorSet0.addBinding(directLight.lightUniformBuffer.descriptorInfo(), 0); \
+mainDescriptorSet0.addBinding(mainVPUniformBuffer.descriptorInfo(), 1); \
+mainDescriptorSet0.addBinding(mainShadowUniformBuffer.descriptorInfo(), 2); \
+mainDescriptorSet0.addBinding(shadowRenderPass.depthSampler.descriptorInfo(shadowRenderPass.depthImageView), 3); \
+
+#define SETUP_MAIN_1_DESCRIPTORS \
+mainDescriptorSet1.addBinding(skylight.irradianceMapSampler.descriptorInfo(skylight.irradianceMapImageView), 0); \
+mainDescriptorSet1.addBinding(skylight.prefilteredMapSampler.descriptorInfo(skylight.prefilteredMapImageView), 1); \
+mainDescriptorSet1.addBinding(brdfLutTexture.sampler.descriptorInfo(brdfLutTexture.imageView), 2);
+
+#define SETUP_MAIN_2_DESCRIPTORS \
+mainDescriptorSet2.addBinding(deferredRenderPass.depthSampler.descriptorInfo(deferredRenderPass.depthImageView, LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL), 0); \
+mainDescriptorSet2.addBinding(deferredRenderPass.normalRoughnessSampler.descriptorInfo(deferredRenderPass.normalRoughnessImageView), 1); \
+mainDescriptorSet2.addBinding(deferredRenderPass.albedoMetallicSampler.descriptorInfo(deferredRenderPass.albedoMetallicImageView), 2); \
+mainDescriptorSet2.addBinding(ssaoBlurRenderPass.colorSampler.descriptorInfo(ssaoBlurRenderPass.colorImageView), 3);
+
+struct BloomRenderPass {
+    lv::Subpass subpass;
+    lv::RenderPass renderPasses[2];
+    lv::Framebuffer downsampleFramebuffers[BLOOM_MIP_COUNT];
+    lv::Framebuffer upsampleFramebuffers[BLOOM_MIP_COUNT - 1];
+    lv::CommandBuffer downsampleCommandBuffer;
+    lv::CommandBuffer upsampleCommandBuffer;
+
+    lv::Viewport viewports[BLOOM_MIP_COUNT];
+
+    lv::Image colorImages[BLOOM_MIP_COUNT];
+    lv::ImageView colorImageViews[BLOOM_MIP_COUNT];
+
+    lv::Sampler downsampleSampler;
+    lv::Sampler upsampleSampler;
+};
+
 #define SETUP_HDR_DESCRIPTORS \
-hdrDescriptorSet.addBinding(mainRenderPass.colorSampler.descriptorInfo(mainRenderPass.colorImageView), 0);/* \
+hdrDescriptorSet.addBinding(mainRenderPass.colorSampler.descriptorInfo(mainRenderPass.colorImageView), 0); \
+hdrDescriptorSet.addBinding(bloomRenderPass.downsampleSampler.descriptorInfo(bloomRenderPass.colorImageViews[0]), 1);/* \
 hdrDescriptorSet.addImageBinding(deferredRenderPass.depthAttachmentSampler.descriptorInfo(), 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); \
 hdrDescriptorSet.addImageBinding(deferredRenderPass.normalRoughnessAttachmentSampler.descriptorInfo(), 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);*/
 
@@ -219,37 +243,22 @@ struct DisasmComputePass {
 };
 */
 
-/*
-std::vector<Vertex> vertices {
-    {{-0.5f,  0.5f,  0.5f}},
-    {{-0.5f, -0.5f,  0.5f}},
-    {{ 0.5f, -0.5f,  0.5f}},
-    {{ 0.5f,  0.5f,  0.5f}}
-};
-
-std::vector<uint32_t> indices {
-    0, 1, 2,
-    0, 2, 3
-};
-*/
-
 //Shadows
 const float cascadeLevels[CASCADE_COUNT] = {
     SHADOW_FAR_PLANE * 0.08f, SHADOW_FAR_PLANE * 0.22f, SHADOW_FAR_PLANE
 };
 
-std::vector<glm::mat4> shadowVPs;
+glm::mat4 shadowVPs[CASCADE_COUNT];
+bool updateShadowFrames[CASCADE_COUNT];
 
-/*
 uint8_t shadowFrameCounter = 0;
 const uint8_t shadowRefreshFrames[CASCADE_COUNT] = {
-    1, 2, 4, 4
+    2, 4, 4
 };
 
 const uint8_t shadowStartingFrames[CASCADE_COUNT] = {
-    0, 0, 0, 2
+    0, 1, 3
 };
-*/
 
 //Time
 float lastTime = 0.0f;
@@ -304,6 +313,9 @@ int main() {
     lvndSetWindowResizeCallback(window, windowResizeCallback);
     lvndSetScrollCallback(window, scrollCallback);
 
+    lv::ThreadPoolCreateInfo threadPoolCreateInfo;
+    lv::ThreadPool threadPool(threadPoolCreateInfo);
+
 #ifdef LV_BACKEND_VULKAN
     lv::InstanceCreateInfo instanceCreateInfo;
 	instanceCreateInfo.applicationName = "Lava Engine";
@@ -313,6 +325,7 @@ int main() {
 
 	lv::DeviceCreateInfo deviceCreateInfo;
 	deviceCreateInfo.window = window;
+    deviceCreateInfo.threadPool = &threadPool;
 	lv::Device device(deviceCreateInfo);
 
 #ifdef LV_BACKEND_VULKAN
@@ -326,106 +339,152 @@ int main() {
     swapChainCreateInfo.maxFramesInFlight = 3;
 	lv::SwapChain swapChain(swapChainCreateInfo);
 
-#ifdef LV_BACKEND_VULKAN
 	lv::DescriptorPoolCreateInfo descriptorPoolCreateInfo;
-	//descriptorManagerCreateInfo.pipelineLayoutCount = SHADER_COUNT;
-	descriptorPoolCreateInfo.poolSizes[VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER] = 64;
-	descriptorPoolCreateInfo.poolSizes[VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER] = 1024;
+	descriptorPoolCreateInfo.poolSizes[LV_DESCRIPTOR_TYPE_UNIFORM_BUFFER] = 128;
+	descriptorPoolCreateInfo.poolSizes[LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER] = 512;
 	//descriptorPoolCreateInfo.poolSizes[VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE] = 2;
 	//descriptorPoolCreateInfo.poolSizes[VK_DESCRIPTOR_TYPE_STORAGE_IMAGE] = 2;
 	lv::DescriptorPool descriptorPool(descriptorPoolCreateInfo);
-#endif
     
-    int8_t maxInt8 = std::numeric_limits<int8_t>::max();
+    uint8_t maxUint8 = std::numeric_limits<uint8_t>::max();
     //std::cout << "Max int8_t: " << (int)maxInt8 << std::endl;
-    glm::i8vec3 neautralColor(maxInt8, maxInt8, maxInt8);
-    lv::MeshComponent::neautralTexture.width = 1;
-    lv::MeshComponent::neautralTexture.height = 1;
-    lv::MeshComponent::neautralTexture.textureData = &neautralColor;
-    lv::MeshComponent::neautralTexture.init();
 
-    //lv::g_descriptorManager.shaderLayouts.resize(SHADER_COUNT);
+    glm::u8vec3 neutralColor(maxUint8, maxUint8, maxUint8);
+    lv::MeshComponent::neutralTexture.width = 1;
+    lv::MeshComponent::neutralTexture.height = 1;
+    lv::MeshComponent::neutralTexture.textureData = &neutralColor;
+    lv::MeshComponent::neutralTexture.init(0);
+    
+    glm::u8vec3 normalNeutralColor(maxUint8 / 2, maxUint8 / 2, maxUint8);
+    lv::MeshComponent::normalNeutralTexture.width = 1;
+    lv::MeshComponent::normalNeutralTexture.height = 1;
+    lv::MeshComponent::normalNeutralTexture.textureData = &normalNeutralColor;
+    lv::MeshComponent::normalNeutralTexture.init(0);
 
-#ifdef LV_BACKEND_VULKAN
     //Equirectangular to cubemap shader
     lv::PipelineLayout equiToCubeLayout;
     equiToCubeLayout.descriptorSetLayouts.resize(1);
 
-	equiToCubeLayout.descriptorSetLayouts[0].addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_VERTEX_BIT | LV_SHADER_STAGE_FRAGMENT_BIT); //View projection
-	equiToCubeLayout.descriptorSetLayouts[0].addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Environment map
+	equiToCubeLayout.descriptorSetLayouts[0].addBinding(0, LV_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_VERTEX_BIT | LV_SHADER_STAGE_FRAGMENT_BIT); //View projection
+	equiToCubeLayout.descriptorSetLayouts[0].addBinding(1, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Environment map
+
+    equiToCubeLayout.pushConstantRanges.resize(1);
+	equiToCubeLayout.pushConstantRanges[0].stageFlags = LV_SHADER_STAGE_VERTEX_BIT | LV_SHADER_STAGE_FRAGMENT_BIT;
+	equiToCubeLayout.pushConstantRanges[0].offset = 0;
+	equiToCubeLayout.pushConstantRanges[0].size = sizeof(lv::UBOCubemapVP);
+
+    equiToCubeLayout.init();
 
     //Irradiance shader
     lv::PipelineLayout irradianceLayout;
     irradianceLayout.descriptorSetLayouts.resize(1);
 
-	irradianceLayout.descriptorSetLayouts[0].addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_VERTEX_BIT | LV_SHADER_STAGE_FRAGMENT_BIT); //View projection
-	irradianceLayout.descriptorSetLayouts[0].addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Environment map
+	irradianceLayout.descriptorSetLayouts[0].addBinding(0, LV_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_VERTEX_BIT | LV_SHADER_STAGE_FRAGMENT_BIT); //View projection
+	irradianceLayout.descriptorSetLayouts[0].addBinding(1, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Environment map
+
+    irradianceLayout.init();
 
     //Prefiltered shader
     lv::PipelineLayout prefilterLayout;
     prefilterLayout.descriptorSetLayouts.resize(1);
 
-	prefilterLayout.descriptorSetLayouts[0].addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_VERTEX_BIT | LV_SHADER_STAGE_FRAGMENT_BIT); //View projection
-	prefilterLayout.descriptorSetLayouts[0].addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Environment map
+	prefilterLayout.descriptorSetLayouts[0].addBinding(0, LV_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_VERTEX_BIT | LV_SHADER_STAGE_FRAGMENT_BIT); //View projection
+	prefilterLayout.descriptorSetLayouts[0].addBinding(1, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Environment map
+
+    prefilterLayout.pushConstantRanges.resize(1);
+	prefilterLayout.pushConstantRanges[0].stageFlags = LV_SHADER_STAGE_VERTEX_BIT | LV_SHADER_STAGE_FRAGMENT_BIT;
+	prefilterLayout.pushConstantRanges[0].offset = 0;
+	prefilterLayout.pushConstantRanges[0].size = sizeof(float);
+
+    prefilterLayout.init();
 
     //Deferred shader
     lv::PipelineLayout deferredLayout;
     deferredLayout.descriptorSetLayouts.resize(3);
 
-	deferredLayout.descriptorSetLayouts[0].addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_VERTEX_BIT/* | LV_SHADER_STAGE_FRAGMENT_BIT*/); //View projection
+	deferredLayout.descriptorSetLayouts[0].addBinding(0, LV_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_VERTEX_BIT/* | LV_SHADER_STAGE_FRAGMENT_BIT*/); //View projection
 
-	deferredLayout.descriptorSetLayouts[1].addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_FRAGMENT_BIT); //Material
+	deferredLayout.descriptorSetLayouts[1].addBinding(0, LV_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_FRAGMENT_BIT); //Material
 
-	//descriptorManager.getDescriptorSetLayout(SHADER_TYPE_DEFERRED, 2).addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT); //Available textures
-	deferredLayout.descriptorSetLayouts[2].addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Albedo texture
-	deferredLayout.descriptorSetLayouts[2].addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Metallic roughness texture
-	//deferredLayout.descriptorSetLayouts[2].addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Metallic texture
-	//deferredLayout.descriptorSetLayouts[2].addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Normal texture
+	deferredLayout.descriptorSetLayouts[2].addBinding(0, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Albedo texture
+	deferredLayout.descriptorSetLayouts[2].addBinding(1, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Metallic roughness texture
+	deferredLayout.descriptorSetLayouts[2].addBinding(2, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Normal texture
+
+    deferredLayout.pushConstantRanges.resize(1);
+	deferredLayout.pushConstantRanges[0].stageFlags = LV_SHADER_STAGE_VERTEX_BIT;
+	deferredLayout.pushConstantRanges[0].offset = 0;
+	deferredLayout.pushConstantRanges[0].size = sizeof(lv::PushConstantModel);
+
+    deferredLayout.init();
 
     //Shadow shader
     lv::PipelineLayout shadowLayout;
     shadowLayout.descriptorSetLayouts.resize(1);
 
-	shadowLayout.descriptorSetLayouts[0].addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_VERTEX_BIT); //View projection
+	shadowLayout.descriptorSetLayouts[0].addBinding(0, LV_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_VERTEX_BIT); //View projection
+
+    shadowLayout.pushConstantRanges.resize(1);
+	shadowLayout.pushConstantRanges[0].stageFlags = LV_SHADER_STAGE_VERTEX_BIT;
+	shadowLayout.pushConstantRanges[0].offset = 0;
+	shadowLayout.pushConstantRanges[0].size = sizeof(glm::mat4);
+
+    shadowLayout.init();
 
     //SSAO shader
     lv::PipelineLayout ssaoLayout;
     ssaoLayout.descriptorSetLayouts.resize(1);
 
-	ssaoLayout.descriptorSetLayouts[0].addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Position depth
-	ssaoLayout.descriptorSetLayouts[0].addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Normal roughness
-    ssaoLayout.descriptorSetLayouts[0].addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //SSAO noise
+	ssaoLayout.descriptorSetLayouts[0].addBinding(0, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Position depth
+	ssaoLayout.descriptorSetLayouts[0].addBinding(1, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Normal roughness
+    ssaoLayout.descriptorSetLayouts[0].addBinding(2, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //SSAO noise
+
+    ssaoLayout.pushConstantRanges.resize(1);
+	ssaoLayout.pushConstantRanges[0].stageFlags = LV_SHADER_STAGE_FRAGMENT_BIT;
+	ssaoLayout.pushConstantRanges[0].offset = 0;
+	ssaoLayout.pushConstantRanges[0].size = sizeof(PCSsaoVP);
+
+    ssaoLayout.init();
 
     //SSAO blur shader
     lv::PipelineLayout ssaoBlurLayout;
     ssaoBlurLayout.descriptorSetLayouts.resize(1);
 
-	ssaoBlurLayout.descriptorSetLayouts[0].addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //SSAO attachment
-	//lv::GET_DESCRIPTOR_SET_LAYOUT(SHADER_TYPE_SSAO_BLUR, 0).addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT); //Position depth
+	ssaoBlurLayout.descriptorSetLayouts[0].addBinding(0, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //SSAO attachment
+
+    ssaoBlurLayout.init();
 
     //Skylight shader
     lv::PipelineLayout skylightLayout;
     skylightLayout.descriptorSetLayouts.resize(1);
 
-	skylightLayout.descriptorSetLayouts[0].addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Environment map
+	skylightLayout.descriptorSetLayouts[0].addBinding(0, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Environment map
+
+    skylightLayout.pushConstantRanges.resize(1);
+	skylightLayout.pushConstantRanges[0].stageFlags = LV_SHADER_STAGE_VERTEX_BIT | LV_SHADER_STAGE_FRAGMENT_BIT;
+	skylightLayout.pushConstantRanges[0].offset = 0;
+	skylightLayout.pushConstantRanges[0].size = sizeof(glm::mat4);
+
+    skylightLayout.init();
 
     //Main shader
     lv::PipelineLayout mainLayout;
     mainLayout.descriptorSetLayouts.resize(3);
 
-	mainLayout.descriptorSetLayouts[0].addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_FRAGMENT_BIT); //Light
-    mainLayout.descriptorSetLayouts[0].addBinding(1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_FRAGMENT_BIT); //Inverse view projection
-	mainLayout.descriptorSetLayouts[0].addBinding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_FRAGMENT_BIT); //Shadow
-    mainLayout.descriptorSetLayouts[0].addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Shadow map
+	mainLayout.descriptorSetLayouts[0].addBinding(0, LV_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_FRAGMENT_BIT); //Light
+    mainLayout.descriptorSetLayouts[0].addBinding(1, LV_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_FRAGMENT_BIT); //Inverse view projection
+	mainLayout.descriptorSetLayouts[0].addBinding(2, LV_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_FRAGMENT_BIT); //Shadow
+    mainLayout.descriptorSetLayouts[0].addBinding(3, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Shadow map
 
-    mainLayout.descriptorSetLayouts[1].addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Irradiance map
-    mainLayout.descriptorSetLayouts[1].addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Prefiltered map
-    mainLayout.descriptorSetLayouts[1].addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //BRDF Lut map
+    mainLayout.descriptorSetLayouts[1].addBinding(0, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Irradiance map
+    mainLayout.descriptorSetLayouts[1].addBinding(1, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Prefiltered map
+    mainLayout.descriptorSetLayouts[1].addBinding(2, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //BRDF Lut map
 
-    mainLayout.descriptorSetLayouts[2].addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Depth
-    mainLayout.descriptorSetLayouts[2].addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Normal roughness
-    mainLayout.descriptorSetLayouts[2].addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Albedo metallic
-    mainLayout.descriptorSetLayouts[2].addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //SSAO
+    mainLayout.descriptorSetLayouts[2].addBinding(0, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Depth
+    mainLayout.descriptorSetLayouts[2].addBinding(1, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Normal roughness
+    mainLayout.descriptorSetLayouts[2].addBinding(2, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Albedo metallic
+    mainLayout.descriptorSetLayouts[2].addBinding(3, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //SSAO
+
+    mainLayout.init();
 
     //Point light shader
     /*
@@ -439,15 +498,22 @@ int main() {
     pointLightLayout.descriptorSetLayouts[0].addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Albedo metallic
     */
 
+    //Bloom shader
+    lv::PipelineLayout bloomLayout;
+    bloomLayout.descriptorSetLayouts.resize(1);
+
+    bloomLayout.descriptorSetLayouts[0].addBinding(0, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Source
+
+    bloomLayout.init();
+
     //HDR shader
     lv::PipelineLayout hdrLayout;
     hdrLayout.descriptorSetLayouts.resize(1);
 
-	hdrLayout.descriptorSetLayouts[0].addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Input image
-	//lv::GET_DESCRIPTOR_SET_LAYOUT(SHADER_TYPE_HDR, 0).addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT); //Depth
-	//lv::GET_DESCRIPTOR_SET_LAYOUT(SHADER_TYPE_HDR, 0).addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT); //Normal roughness
+	hdrLayout.descriptorSetLayouts[0].addBinding(0, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Input image
+	hdrLayout.descriptorSetLayouts[0].addBinding(1, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Bloom image
 
-    //descriptorManager.init();
+    hdrLayout.init();
 
     //Disassemble depth shader
     /*
@@ -457,42 +523,66 @@ int main() {
     disasmLayout.descriptorSetLayouts[0].addBinding(0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, LV_SHADER_STAGE_COMPUTE_BIT); //Input depth
     disasmLayout.descriptorSetLayouts[0].addBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, LV_SHADER_STAGE_COMPUTE_BIT); //Output depth
     */
-#endif
+
+    //Game
+    Game game(deferredLayout);
+    game.loadFromFile();
 
     //Render passes
 
+    //Skylight bake render pass
+#pragma region SKYLIGHT_BAKE_RENDER_PASS
+    lv::Subpass skylightBakeSubpass;
+    lv::RenderPass skylightBakeRenderPass;
+
+    skylightBakeSubpass.addColorAttachment({
+        .index = 0,
+        .layout = LV_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    });
+
+    skylightBakeRenderPass.addSubpass(&skylightBakeSubpass);
+    
+    skylightBakeRenderPass.addColorAttachment({
+        .format = LV_FORMAT_R8G8B8A8_UNORM,
+        .index = 0,
+        .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    });
+
+    skylightBakeRenderPass.init();
+#pragma endregion SKYLIGHT_BAKE_RENDER_PASS
+
     //Deferred render pass
 #pragma region DEFERRED_RENDER_PASS
-    DeferredRenderPass deferredRenderPass{};
-    /*
-    deferredRenderPass.positionDepthAttachment.usage |= VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    deferredRenderPass.positionDepthAttachment.format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    deferredRenderPass.positionDepthAttachment.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    deferredRenderPass.positionDepthAttachment.init(window.width, window.height);
-    deferredRenderPass.positionDepthAttachmentView.init(&deferredRenderPass.positionDepthAttachment);
-    deferredRenderPass.positionDepthAttachmentSampler.init(&deferredRenderPass.positionDepthAttachmentView);
-    */
-
+    DeferredRenderPass deferredRenderPass;
     deferredRenderPass.normalRoughnessImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    deferredRenderPass.normalRoughnessImage.format = LV_FORMAT_RGBA16_SNORM;
+    deferredRenderPass.normalRoughnessImage.format = LV_FORMAT_R16G16B16A16_SNORM;
     deferredRenderPass.normalRoughnessImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
     deferredRenderPass.normalRoughnessImage.init(SRC_WIDTH, SRC_HEIGHT);
     deferredRenderPass.normalRoughnessImageView.init(&deferredRenderPass.normalRoughnessImage);
     deferredRenderPass.normalRoughnessSampler.init();
 
     deferredRenderPass.albedoMetallicImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    deferredRenderPass.albedoMetallicImage.format = LV_FORMAT_RGBA16_UNORM;
+    deferredRenderPass.albedoMetallicImage.format = LV_FORMAT_R16G16B16A16_UNORM;
     deferredRenderPass.albedoMetallicImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
     deferredRenderPass.albedoMetallicImage.init(SRC_WIDTH, SRC_HEIGHT);
     deferredRenderPass.albedoMetallicImageView.init(&deferredRenderPass.albedoMetallicImage);
     deferredRenderPass.albedoMetallicSampler.init();
 
-    deferredRenderPass.depthImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    deferredRenderPass.depthImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | LV_IMAGE_USAGE_TRANSFER_SRC_BIT;
     deferredRenderPass.depthImage.format = swapChain.depthFormat;
     deferredRenderPass.depthImage.aspectMask = LV_IMAGE_ASPECT_DEPTH_BIT;
     deferredRenderPass.depthImage.init(SRC_WIDTH, SRC_HEIGHT);
     deferredRenderPass.depthImageView.init(&deferredRenderPass.depthImage);
     deferredRenderPass.depthSampler.init();
+
+    /*
+    deferredRenderPass.halfDepthImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | LV_IMAGE_USAGE_TRANSFER_DST_BIT;
+    deferredRenderPass.halfDepthImage.format = swapChain.depthFormat;
+    deferredRenderPass.halfDepthImage.aspectMask = LV_IMAGE_ASPECT_DEPTH_BIT;
+    deferredRenderPass.halfDepthImage.init(SRC_WIDTH / 2, SRC_HEIGHT / 2);
+    deferredRenderPass.halfDepthImageView.init(&deferredRenderPass.halfDepthImage);
+    deferredRenderPass.halfDepthSampler.init();
+    */
 
     deferredRenderPass.subpass.addColorAttachment({
         .index = 0,
@@ -546,12 +636,7 @@ int main() {
     });
 
     deferredRenderPass.framebuffer.init(&deferredRenderPass.renderPass);
-
-#ifdef LV_BACKEND_VULKAN
-	deferredRenderPass.normalRoughnessImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	deferredRenderPass.albedoMetallicImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	deferredRenderPass.depthImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
-#endif
+    deferredRenderPass.commandBuffer.init();
 #pragma endregion DEFERRED_RENDER_PASS
 
     //Shadow render pass
@@ -565,31 +650,15 @@ int main() {
     //shadowRenderPass.depthAttachment.flags |= VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT;
     shadowRenderPass.depthImage.init(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
     shadowRenderPass.depthImageView.init(&shadowRenderPass.depthImage);
+    for (uint8_t i = 0; i < CASCADE_COUNT; i++) {
+        shadowRenderPass.depthImageViews[i].baseLayer = i;
+        shadowRenderPass.depthImageViews[i].layerCount = 1;
+        shadowRenderPass.depthImageViews[i].init(&shadowRenderPass.depthImage);
+    }
     shadowRenderPass.depthSampler.filter = LV_FILTER_LINEAR;
     shadowRenderPass.depthSampler.compareEnable = LV_TRUE;
     //shadowRenderPass.depthAttachmentSampler.compareOp = LV_COMPARE_OP_LESS;
     shadowRenderPass.depthSampler.init();
-
-    /*
-    for (uint8_t i = 0; i < CASCADE_COUNT; i++) {
-#ifdef LV_BACKEND_VULKAN
-        shadowRenderPass.depthAttachmentViews[i].baseLayer = i;
-        shadowRenderPass.depthAttachmentViews[i].layerCount = 1;
-        shadowRenderPass.depthAttachmentViews[i].init(&shadowRenderPass.depthAttachment);
-#elif defined(LV_BACKEND_METAL)
-        shadowRenderPass.depthAttachmentViews[i] = shadowRenderPass.depthAttachment;
-        //shadowRenderPass.depthAttachmentViews[i].baseLayer = i;
-        shadowRenderPass.depthAttachmentViews[i].layerCount = 1;
-        shadowRenderPass.depthAttachmentViews[i].images[0] = shadowRenderPass.depthAttachment.images[0]->newTextureView(shadowRenderPass.depthAttachment.format, LV_IMAGE_VIEW_TYPE_2D, NS::Range(0, 1), NS::Range(i, 1));
-#endif
-
-#ifdef LV_BACKEND_VULKAN
-        shadowRenderPass.framebuffers[i].setDepthAttachment({&shadowRenderPass.depthAttachment, &shadowRenderPass.depthAttachmentViews[i], 0});
-#elif defined(LV_BACKEND_METAL)
-        shadowRenderPass.framebuffers[i].setDepthAttachment({&shadowRenderPass.depthAttachmentViews[i], 0});
-#endif
-    }
-    */
 
     shadowRenderPass.subpass.setDepthAttachment({
         .index = 0,
@@ -608,33 +677,15 @@ int main() {
 
     shadowRenderPass.renderPass.init();
 
-    shadowRenderPass.framebuffer.setDepthAttachment({
-        .imageView = &shadowRenderPass.depthImageView,
-        .index = 0
-    });
-
-    //for (uint8_t i = 0; i < CASCADE_COUNT; i++) {
-    shadowRenderPass.framebuffer/*s[i]*/.init(&shadowRenderPass.renderPass);
-    //}
-
-#ifdef LV_BACKEND_VULKAN
-	shadowRenderPass.depthImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-#endif
-
-    /*
     for (uint8_t i = 0; i < CASCADE_COUNT; i++) {
-        //std::cout << (int)i << std::endl;
-        shadowRenderPass.depthAttachmentViews[i].baseLayer = i;
-        shadowRenderPass.depthAttachmentViews[i].layerCount = 1;
-        shadowRenderPass.depthAttachmentViews[i].init(&shadowRenderPass.depthAttachment);
-        shadowRenderPass.framebuffers[i].setDepthAttachment({&shadowRenderPass.depthAttachment, &shadowRenderPass.depthAttachmentViews[i], 0});
+        shadowRenderPass.framebuffers[i].setDepthAttachment({
+            .imageView = &shadowRenderPass.depthImageViews[i],
+            .index = 0
+        });
 
-        if (i == 0) shadowRenderPass.renderPass.init(shadowRenderPass.framebuffers[0].getAttachmentDescriptions());
-
-        shadowRenderPass.framebuffers[i].init(&shadowRenderPass.renderPass, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+        shadowRenderPass.framebuffers[i].init(&shadowRenderPass.renderPass);
     }
-    */
-    //shadowRenderPass.framebuffer.clearValues[0].depthStencil = {0.0f, 0};
+    shadowRenderPass.commandBuffer.init();
 #pragma endregion SHADOW_RENDER_PASS
 
     //SSAO render pass
@@ -653,12 +704,26 @@ int main() {
         .layout = LV_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
     });
 
+    ssaoRenderPass.subpass.setDepthAttachment({
+        .index = 1,
+        .layout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+    });
+
     ssaoRenderPass.renderPass.addSubpass(&ssaoRenderPass.subpass);
 
     ssaoRenderPass.renderPass.addColorAttachment({
         .format = ssaoRenderPass.colorImage.format,
         .index = 0,
         .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    });
+
+    ssaoRenderPass.renderPass.setDepthAttachment({
+        .format = deferredRenderPass./*halfD*/depthImage.format,
+        .index = 1,
+        .loadOp = LV_ATTACHMENT_LOAD_OP_LOAD,
+        .storeOp = LV_ATTACHMENT_STORE_OP_DONT_CARE,
+        .initialLayout = LV_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .finalLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
     });
 
     ssaoRenderPass.renderPass.init();
@@ -668,19 +733,13 @@ int main() {
         .index = 0
     });
 
-    /*
-    ssaoRenderPass.framebuffer.setDepthAttachment({&deferredRenderPass.depthAttachment,
-#ifdef LV_BACKEND_VULKAN
-    &deferredRenderPass.depthAttachmentView,
-#endif
-    1});
-    */
+    ssaoRenderPass.framebuffer.setDepthAttachment({
+        .imageView = &deferredRenderPass./*halfD*/depthImageView,
+        .index = 1
+    });
 
     ssaoRenderPass.framebuffer.init(&ssaoRenderPass.renderPass);
-
-#ifdef LV_BACKEND_VULKAN
-	ssaoRenderPass.colorImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-#endif
+    ssaoRenderPass.commandBuffer.init();
 #pragma endregion SSAO_RENDER_PASS
 
     //SSAO blur render pass
@@ -716,7 +775,7 @@ int main() {
         .index = 1,
         .loadOp = LV_ATTACHMENT_LOAD_OP_LOAD,
         .storeOp = LV_ATTACHMENT_STORE_OP_DONT_CARE,
-        .initialLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+        .initialLayout = LV_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
         .finalLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
     });
 
@@ -733,17 +792,14 @@ int main() {
     });
 
     ssaoBlurRenderPass.framebuffer.init(&ssaoBlurRenderPass.renderPass);
-
-#ifdef LV_BACKEND_VULKAN
-	ssaoBlurRenderPass.colorImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-#endif
+    ssaoBlurRenderPass.commandBuffer.init();
 #pragma endregion SSAO_BLUR_RENDER_PASS
 
     //Main render pass
 #pragma region MAIN_RENDER_PASS
     MainRenderPass mainRenderPass{};
     mainRenderPass.colorImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    mainRenderPass.colorImage.format = LV_FORMAT_RGBA32_SFLOAT;
+    mainRenderPass.colorImage.format = LV_FORMAT_R32G32B32A32_SFLOAT;
     mainRenderPass.colorImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
     mainRenderPass.colorImage.init(SRC_WIDTH, SRC_HEIGHT);
     mainRenderPass.colorImageView.init(&mainRenderPass.colorImage);
@@ -789,17 +845,73 @@ int main() {
     });
 
     mainRenderPass.framebuffer.init(&mainRenderPass.renderPass);
-
-#ifdef LV_BACKEND_VULKAN
-	mainRenderPass.colorImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-#endif
+    mainRenderPass.commandBuffer.init();
 #pragma endregion MAIN_RENDER_PASS
+
+    //Downsample render pass
+#pragma region DOWNSAMPLE_RENDER_PASS
+    BloomRenderPass bloomRenderPass{};
+    uint16_t bloomMipWidth = SRC_WIDTH, bloomMipHeight = SRC_HEIGHT;
+    for (uint8_t i = 0; i < BLOOM_MIP_COUNT; i++) {
+        bloomRenderPass.colorImages[i].usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        bloomRenderPass.colorImages[i].format = LV_FORMAT_B10R11G11_UFLOAT;
+        bloomRenderPass.colorImages[i].aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
+        bloomRenderPass.colorImages[i].init(bloomMipWidth, bloomMipHeight);
+        bloomRenderPass.colorImageViews[i].init(&bloomRenderPass.colorImages[i]);
+
+        bloomRenderPass.viewports[i].setViewport(0, 0, bloomMipWidth, bloomMipHeight);
+
+        bloomMipWidth /= 2;
+        bloomMipHeight /= 2;
+    }
+    bloomRenderPass.downsampleSampler.init();
+    bloomRenderPass.upsampleSampler.filter = LV_FILTER_LINEAR;
+    bloomRenderPass.upsampleSampler.init();
+
+    bloomRenderPass.subpass.addColorAttachment({
+        .index = 0,
+        .layout = LV_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    });
+
+    for (uint8_t i = 0; i < 2; i++) {
+        bloomRenderPass.renderPasses[i].addSubpass(&bloomRenderPass.subpass);
+
+        bloomRenderPass.renderPasses[i].addColorAttachment({
+            .format = bloomRenderPass.colorImages[0].format,
+            .index = 0,
+            .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .loadOp = (i == 0 ? LV_ATTACHMENT_LOAD_OP_DONT_CARE : LV_ATTACHMENT_LOAD_OP_LOAD)
+        });
+
+        bloomRenderPass.renderPasses[i].init();
+    }
+
+    for (uint8_t i = 0; i < BLOOM_MIP_COUNT; i++) {
+        bloomRenderPass.downsampleFramebuffers[i].addColorAttachment({
+            .imageView = &bloomRenderPass.colorImageViews[i],
+            .index = 0
+        });
+
+        bloomRenderPass.downsampleFramebuffers[i].init(&bloomRenderPass.renderPasses[0]);
+    }
+
+    for (uint8_t i = 0; i < BLOOM_MIP_COUNT - 1; i++) {
+        bloomRenderPass.upsampleFramebuffers[i].addColorAttachment({
+            .imageView = &bloomRenderPass.colorImageViews[i],
+            .index = 0
+        });
+
+        bloomRenderPass.upsampleFramebuffers[i].init(&bloomRenderPass.renderPasses[1]);
+    }
+    bloomRenderPass.downsampleCommandBuffer.init();
+    bloomRenderPass.upsampleCommandBuffer.init();
+#pragma endregion DOWNSAMPLE_RENDER_PASS
 
     //HDR render pass
 #pragma region HDR_RENDER_PASS
     MainRenderPass hdrRenderPass{};
     hdrRenderPass.colorImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    hdrRenderPass.colorImage.format = LV_FORMAT_RGBA16_UNORM;
+    hdrRenderPass.colorImage.format = LV_FORMAT_R16G16B16A16_UNORM;
     hdrRenderPass.colorImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
     hdrRenderPass.colorImage.init(SRC_WIDTH, SRC_HEIGHT);
     hdrRenderPass.colorImageView.init(&hdrRenderPass.colorImage);
@@ -826,10 +938,7 @@ int main() {
     });
 
     hdrRenderPass.framebuffer.init(&hdrRenderPass.renderPass);
-
-#ifdef LV_BACKEND_VULKAN
-	hdrRenderPass.colorImage.transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-#endif
+    hdrRenderPass.commandBuffer.init();
 #pragma endregion HDR_RENDER_PASS
 
     //Disassemble depth compute pass
@@ -854,146 +963,125 @@ int main() {
 
     // *************** Equirectangular to cubemap shader ***************
 #pragma region EQUIRECTANGULAR_TO_CUBE_SHADER
-#ifdef LV_BACKEND_VULKAN
-    equiToCubeLayout.pushConstantRanges.resize(1);
-	equiToCubeLayout.pushConstantRanges[0].stageFlags = LV_SHADER_STAGE_VERTEX_BIT | LV_SHADER_STAGE_FRAGMENT_BIT;
-	equiToCubeLayout.pushConstantRanges[0].offset = 0;
-	equiToCubeLayout.pushConstantRanges[0].size = sizeof(lv::UBOCubemapVP);
-
-    equiToCubeLayout.init();
-#endif
-
     //Vertex
+    lv::ShaderBundle vertCubemapShaderBundle;
+    vertCubemapShaderBundle.init("assets/shaders/shader_bundles/vertex/cubemap.json");
+
     lv::ShaderModuleCreateInfo vertCubemapCreateInfo{};
-#ifdef LV_BACKEND_VULKAN
-    vertCubemapCreateInfo.shaderType = LV_SHADER_STAGE_VERTEX_BIT;
-#endif
+    vertCubemapCreateInfo.shaderBundle = &vertCubemapShaderBundle;
+    vertCubemapCreateInfo.shaderStage = LV_SHADER_STAGE_VERTEX_BIT;
     vertCubemapCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("vertex/cubemap"));
 
-    lv::ShaderModule vertCubemapModule(vertCubemapCreateInfo);
+    lv::ShaderModule vertCubemapModule;
+    vertCubemapModule.init(vertCubemapCreateInfo);
 
     //Fragment
+    lv::ShaderBundle frageEquiToCubeShaderBundle;
+    frageEquiToCubeShaderBundle.init("assets/shaders/shader_bundles/fragment/equi_to_cube.json");
+
     lv::ShaderModuleCreateInfo fragEquiToCubeCreateInfo{};
-#ifdef LV_BACKEND_VULKAN
-    fragEquiToCubeCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-#endif
+    fragEquiToCubeCreateInfo.shaderBundle = &frageEquiToCubeShaderBundle;
+    fragEquiToCubeCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
     fragEquiToCubeCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/equi_to_cube"));
 
-    lv::ShaderModule fragEquiToCubeModule(fragEquiToCubeCreateInfo);
+    lv::ShaderModule fragEquiToCubeModule;
+    fragEquiToCubeModule.init(fragEquiToCubeCreateInfo);
     
     //Shader
-	lv::GraphicsPipelineCreateInfo equiToCubeShaderCreateInfo{};
+	lv::GraphicsPipelineCreateInfo equiToCubeGraphicsPipelineCreateInfo{};
 	
-	equiToCubeShaderCreateInfo.vertexShaderModule = &vertCubemapModule;
-	equiToCubeShaderCreateInfo.fragmentShaderModule = &fragEquiToCubeModule;
-#ifdef LV_BACKEND_VULKAN
-	equiToCubeShaderCreateInfo.pipelineLayout = &equiToCubeLayout;
-#endif
-	//equiToCubeShaderCreateInfo.renderPass = &mainRenderPass.renderPass;
+	equiToCubeGraphicsPipelineCreateInfo.vertexShaderModule = &vertCubemapModule;
+	equiToCubeGraphicsPipelineCreateInfo.fragmentShaderModule = &fragEquiToCubeModule;
+	equiToCubeGraphicsPipelineCreateInfo.pipelineLayout = &equiToCubeLayout;
+	equiToCubeGraphicsPipelineCreateInfo.renderPass = &skylightBakeRenderPass;
+
+    lv::GraphicsPipeline equiToCubeGraphicsPipeline;
+    equiToCubeGraphicsPipeline.init(equiToCubeGraphicsPipelineCreateInfo);
 #pragma endregion EQUIRECTANGULAR_TO_CUBE_SHADER
 
     // *************** Irradiance shader ***************
 #pragma region IRRADIANCE_SHADER
-    /*
-    lv::GET_SHADER_LAYOUT(SHADER_TYPE_IRRADIANCE).pushConstantRanges.resize(1);
-	lv::GET_SHADER_LAYOUT(SHADER_TYPE_IRRADIANCE).pushConstantRanges[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-	lv::GET_SHADER_LAYOUT(SHADER_TYPE_IRRADIANCE).pushConstantRanges[0].offset = 0;
-	lv::GET_SHADER_LAYOUT(SHADER_TYPE_IRRADIANCE).pushConstantRanges[0].size = sizeof(lv::UBOEquiVP);
-    */
-
-#ifdef LV_BACKEND_VULKAN
-    irradianceLayout.init();
-#endif
-
     //Fragment
+    lv::ShaderBundle fragIrradianceShaderBundle;
+    fragIrradianceShaderBundle.init("assets/shaders/shader_bundles/fragment/irradiance.json");
+
     lv::ShaderModuleCreateInfo fragIrradianceCreateInfo{};
-#ifdef LV_BACKEND_VULKAN
-    fragIrradianceCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-#endif
+    fragIrradianceCreateInfo.shaderBundle = &fragIrradianceShaderBundle;
+    fragIrradianceCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
     fragIrradianceCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/irradiance"));
 
-    lv::ShaderModule fragIrradianceModule(fragIrradianceCreateInfo);
+    lv::ShaderModule fragIrradianceModule;
+    fragIrradianceModule.init(fragIrradianceCreateInfo);
     
     //Shader
-	lv::GraphicsPipelineCreateInfo irradianceShaderCreateInfo{};
+	lv::GraphicsPipelineCreateInfo irradianceGraphicsPipelineCreateInfo{};
 	
-	irradianceShaderCreateInfo.vertexShaderModule = &vertCubemapModule;
-	irradianceShaderCreateInfo.fragmentShaderModule = &fragIrradianceModule;
-#ifdef LV_BACKEND_VULKAN
-	irradianceShaderCreateInfo.pipelineLayout = &irradianceLayout;
-#endif
-	//irradianceCreateInfo.renderPass = &mainRenderPass.renderPass;
+	irradianceGraphicsPipelineCreateInfo.vertexShaderModule = &vertCubemapModule;
+	irradianceGraphicsPipelineCreateInfo.fragmentShaderModule = &fragIrradianceModule;
+	irradianceGraphicsPipelineCreateInfo.pipelineLayout = &irradianceLayout;
+	irradianceGraphicsPipelineCreateInfo.renderPass = &skylightBakeRenderPass;
 
-    irradianceShaderCreateInfo.config.depthTestEnable = LV_FALSE;
+    lv::GraphicsPipeline irradianceGraphicsPipeline;
+    irradianceGraphicsPipeline.init(irradianceGraphicsPipelineCreateInfo);
 #pragma endregion IRRADIANCE_SHADER
 
     // *************** Irradiance shader ***************
 #pragma region PREFILTERED_SHADER
-#ifdef LV_BACKEND_VULKAN
-    prefilterLayout.pushConstantRanges.resize(1);
-	prefilterLayout.pushConstantRanges[0].stageFlags = LV_SHADER_STAGE_VERTEX_BIT | LV_SHADER_STAGE_FRAGMENT_BIT;
-	prefilterLayout.pushConstantRanges[0].offset = 0;
-	prefilterLayout.pushConstantRanges[0].size = sizeof(float);
-
-    prefilterLayout.init();
-#endif
-
     //Fragment
+    lv::ShaderBundle fragPrefilteredShaderBundle;
+    fragPrefilteredShaderBundle.init("assets/shaders/shader_bundles/fragment/prefiltered.json");
+
     lv::ShaderModuleCreateInfo fragPrefilteredCreateInfo{};
-#ifdef LV_BACKEND_VULKAN
-    fragPrefilteredCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-#endif
+    fragPrefilteredCreateInfo.shaderBundle = &fragPrefilteredShaderBundle;
+    fragPrefilteredCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
     fragPrefilteredCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/prefiltered"));
 
-    lv::ShaderModule fragPrefilteredModule(fragPrefilteredCreateInfo);
+    lv::ShaderModule fragPrefilteredModule;
+    fragPrefilteredModule.init(fragPrefilteredCreateInfo);
     
     //Shader
-	lv::GraphicsPipelineCreateInfo prefilteredShaderCreateInfo{};
+	lv::GraphicsPipelineCreateInfo prefilteredGraphicsPipelineCreateInfo{};
 	
-	prefilteredShaderCreateInfo.vertexShaderModule = &vertCubemapModule;
-	prefilteredShaderCreateInfo.fragmentShaderModule = &fragPrefilteredModule;
-#ifdef LV_BACKEND_VULKAN
-	prefilteredShaderCreateInfo.pipelineLayout = &prefilterLayout;
-#endif
-	//prefilteredShaderCreateInfo.renderPass = &mainRenderPass.renderPass
+	prefilteredGraphicsPipelineCreateInfo.vertexShaderModule = &vertCubemapModule;
+	prefilteredGraphicsPipelineCreateInfo.fragmentShaderModule = &fragPrefilteredModule;
+	prefilteredGraphicsPipelineCreateInfo.pipelineLayout = &prefilterLayout;
+	prefilteredGraphicsPipelineCreateInfo.renderPass = &skylightBakeRenderPass;
+
+    lv::GraphicsPipeline prefilteredGraphicsPipeline;
+    prefilteredGraphicsPipeline.init(prefilteredGraphicsPipelineCreateInfo);
 #pragma endregion PREFILTERED_SHADER
 
     // *************** Deferred shader ***************
 #pragma region DEFERRED_SHADER
-#ifdef LV_BACKEND_VULKAN
-    deferredLayout.pushConstantRanges.resize(1);
-	deferredLayout.pushConstantRanges[0].stageFlags = LV_SHADER_STAGE_VERTEX_BIT;
-	deferredLayout.pushConstantRanges[0].offset = 0;
-	deferredLayout.pushConstantRanges[0].size = sizeof(lv::PushConstantModel);
-
-    deferredLayout.init();
-#endif
-
     //Vertex
+    lv::ShaderBundle vertDeferredShaderBundle;
+    vertDeferredShaderBundle.init("assets/shaders/shader_bundles/vertex/deferred.json");
+
     lv::ShaderModuleCreateInfo vertDeferredCreateInfo{};
-#ifdef LV_BACKEND_VULKAN
-    vertDeferredCreateInfo.shaderType = LV_SHADER_STAGE_VERTEX_BIT;
-#endif
+    vertDeferredCreateInfo.shaderBundle = &vertDeferredShaderBundle;
+    vertDeferredCreateInfo.shaderStage = LV_SHADER_STAGE_VERTEX_BIT;
     vertDeferredCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("vertex/deferred"));
 
-    lv::ShaderModule vertDeferredModule(vertDeferredCreateInfo);
+    lv::ShaderModule vertDeferredModule;
+    vertDeferredModule.init(vertDeferredCreateInfo);
 
     //Fragment
+    lv::ShaderBundle fragDeferredShaderBundle;
+    fragDeferredShaderBundle.init("assets/shaders/shader_bundles/fragment/deferred.json");
+
     lv::ShaderModuleCreateInfo fragDeferredCreateInfo{};
-#ifdef LV_BACKEND_VULKAN
-    fragDeferredCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-#endif
+    fragDeferredCreateInfo.shaderBundle = &fragDeferredShaderBundle;
+    fragDeferredCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
     fragDeferredCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/deferred"));
 
-    lv::ShaderModule fragDeferredModule(fragDeferredCreateInfo);
+    lv::ShaderModule fragDeferredModule;
+    fragDeferredModule.init(fragDeferredCreateInfo);
     
     //Shader
 	lv::GraphicsPipelineCreateInfo deferredGraphicsPipelineCreateInfo{};
 	deferredGraphicsPipelineCreateInfo.vertexShaderModule = &vertDeferredModule;
 	deferredGraphicsPipelineCreateInfo.fragmentShaderModule = &fragDeferredModule;
-#ifdef LV_BACKEND_VULKAN
 	deferredGraphicsPipelineCreateInfo.pipelineLayout = &deferredLayout;
-#endif
 	deferredGraphicsPipelineCreateInfo.renderPass = &deferredRenderPass.renderPass;
 
     deferredGraphicsPipelineCreateInfo.vertexDescriptor = lv::MainVertex::getVertexDescriptor();
@@ -1001,46 +1089,42 @@ int main() {
     deferredGraphicsPipelineCreateInfo.config.cullMode = LV_CULL_MODE_BACK_BIT;
     deferredGraphicsPipelineCreateInfo.config.depthTestEnable = LV_TRUE;
 
-	lv::GraphicsPipeline deferredGraphicsPipeline(deferredGraphicsPipelineCreateInfo);
+	lv::GraphicsPipeline deferredGraphicsPipeline;
+    deferredGraphicsPipeline.init(deferredGraphicsPipelineCreateInfo);
 #pragma endregion DEFERRED_SHADER
 
     // *************** Shadow shader ***************
 #pragma region SHADOW_SHADER
-#ifdef LV_BACKEND_VULKAN
-    shadowLayout.pushConstantRanges.resize(1);
-	shadowLayout.pushConstantRanges[0].stageFlags = LV_SHADER_STAGE_VERTEX_BIT;
-	shadowLayout.pushConstantRanges[0].offset = 0;
-	shadowLayout.pushConstantRanges[0].size = sizeof(glm::mat4);
-
-    shadowLayout.init();
-#endif
-
     //Vertex
+    lv::ShaderBundle vertShadowShaderBundle;
+    vertShadowShaderBundle.init("assets/shaders/shader_bundles/vertex/shadow.json");
+
     lv::ShaderModuleCreateInfo vertShadowCreateInfo{};
-#ifdef LV_BACKEND_VULKAN
-    vertShadowCreateInfo.shaderType = LV_SHADER_STAGE_VERTEX_BIT;
-#endif
+    vertShadowCreateInfo.shaderBundle = &vertShadowShaderBundle;
+    vertShadowCreateInfo.shaderStage = LV_SHADER_STAGE_VERTEX_BIT;
     vertShadowCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("vertex/shadow"));
 
-    lv::ShaderModule vertShadowModule(vertShadowCreateInfo);
+    lv::ShaderModule vertShadowModule;
+    vertShadowModule.init(vertShadowCreateInfo);
 
     //Fragment
+    lv::ShaderBundle fragShadowShaderBundle;
+    fragShadowShaderBundle.init("assets/shaders/shader_bundles/fragment/shadow.json");
+
     lv::ShaderModuleCreateInfo fragShadowCreateInfo{};
-#ifdef LV_BACKEND_VULKAN
-    fragShadowCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-#endif
+    fragShadowCreateInfo.shaderBundle = &fragShadowShaderBundle;
+    fragShadowCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
     fragShadowCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/shadow"));
 
-    lv::ShaderModule fragShadowModule(fragShadowCreateInfo);
+    lv::ShaderModule fragShadowModule;
+    fragShadowModule.init(fragShadowCreateInfo);
     
     //Shader
 	lv::GraphicsPipelineCreateInfo shadowGraphicsPipelineCreateInfo{};
 	
 	shadowGraphicsPipelineCreateInfo.vertexShaderModule = &vertShadowModule;
 	shadowGraphicsPipelineCreateInfo.fragmentShaderModule = &fragShadowModule;
-#ifdef LV_BACKEND_VULKAN
 	shadowGraphicsPipelineCreateInfo.pipelineLayout = &shadowLayout;
-#endif
 	shadowGraphicsPipelineCreateInfo.renderPass = &shadowRenderPass.renderPass;
 
     shadowGraphicsPipelineCreateInfo.vertexDescriptor = lv::MainVertex::getVertexDescriptorShadows();
@@ -1048,165 +1132,163 @@ int main() {
     shadowGraphicsPipelineCreateInfo.config.cullMode = LV_CULL_MODE_FRONT_BIT;
     shadowGraphicsPipelineCreateInfo.config.depthTestEnable = LV_TRUE;
 
-	lv::GraphicsPipeline shadowGraphicsPipeline(shadowGraphicsPipelineCreateInfo);
+	lv::GraphicsPipeline shadowGraphicsPipeline;
+    shadowGraphicsPipeline.init(shadowGraphicsPipelineCreateInfo);
 #pragma endregion SHADOW_SHADER
 
     // *************** SSAO shader ***************
 #pragma region SSAO_SHADER
-#ifdef LV_BACKEND_VULKAN
-    ssaoLayout.pushConstantRanges.resize(1);
-	ssaoLayout.pushConstantRanges[0].stageFlags = LV_SHADER_STAGE_FRAGMENT_BIT;
-	ssaoLayout.pushConstantRanges[0].offset = 0;
-	ssaoLayout.pushConstantRanges[0].size = sizeof(PCSsaoVP);
-
-    ssaoLayout.init();
-#endif
-
     //Vertex
+    lv::ShaderBundle vertTriangleShaderBundle;
+    vertTriangleShaderBundle.init("assets/shaders/shader_bundles/vertex/triangle.json");
+
     lv::ShaderModuleCreateInfo vertTriangleCreateInfo{};
-#ifdef LV_BACKEND_VULKAN
-    vertTriangleCreateInfo.shaderType = LV_SHADER_STAGE_VERTEX_BIT;
-#endif
+    vertTriangleCreateInfo.shaderBundle = &vertTriangleShaderBundle;
+    vertTriangleCreateInfo.shaderStage = LV_SHADER_STAGE_VERTEX_BIT;
     vertTriangleCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("vertex/triangle"));
 
-    lv::ShaderModule vertTriangleModule(vertTriangleCreateInfo);
+    lv::ShaderModule vertTriangleModule;
+    vertTriangleModule.init(vertTriangleCreateInfo);
 
     //Fragment
-    lv::ShaderModuleCreateInfo fragSsaoCreateInfo{};
-#ifdef LV_BACKEND_VULKAN
-    fragSsaoCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-#endif
-    fragSsaoCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/ssao"));
+    lv::ShaderBundle fragSsaoShaderBundle;
+    fragSsaoShaderBundle.init("assets/shaders/shader_bundles/fragment/ssao.json");
 
-    lv::ShaderModule fragSsaoModule(fragSsaoCreateInfo);
+    lv::ShaderModuleCreateInfo fragSsaoCreateInfo{};
+    fragSsaoCreateInfo.shaderBundle = &fragSsaoShaderBundle;
+    fragSsaoCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
+    fragSsaoCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/ssao"));
+    
+    fragSsaoCreateInfo.specializationConstants.resize(1);
+    fragSsaoCreateInfo.specializationConstants[0].constantID = 0;
+    fragSsaoCreateInfo.specializationConstants[0].offset = 0;
+    fragSsaoCreateInfo.specializationConstants[0].size = sizeof(int);
+#ifdef LV_BACKEND_METAL
+    fragSsaoCreateInfo.specializationConstants[0].dataType = MTL::DataTypeInt;
+#endif
+
+    fragSsaoCreateInfo.constantsData = &game.scene().graphicsSettings.aoType;
+    fragSsaoCreateInfo.constantsSize = sizeof(int);
+
+    lv::ShaderModule fragSsaoModule;
+    fragSsaoModule.init(fragSsaoCreateInfo);
     
     //Shader
 	lv::GraphicsPipelineCreateInfo ssaoGraphicsPipelineCreateInfo{};
 	
 	ssaoGraphicsPipelineCreateInfo.vertexShaderModule = &vertTriangleModule;
 	ssaoGraphicsPipelineCreateInfo.fragmentShaderModule = &fragSsaoModule;
-#ifdef LV_BACKEND_VULKAN
 	ssaoGraphicsPipelineCreateInfo.pipelineLayout = &ssaoLayout;
-#endif
 	ssaoGraphicsPipelineCreateInfo.renderPass = &ssaoRenderPass.renderPass;
 
-    /*
-    ssaoGraphicsPipelineCreateInfo.config.depthTest = LV_TRUE;
-    ssaoGraphicsPipelineCreateInfo.config.depthWrite = LV_FALSE;
+    ssaoGraphicsPipelineCreateInfo.config.depthTestEnable = LV_TRUE;
+    ssaoGraphicsPipelineCreateInfo.config.depthWriteEnable = LV_FALSE;
     ssaoGraphicsPipelineCreateInfo.config.depthOp = LV_COMPARE_OP_NOT_EQUAL;
-    */
 
-	lv::GraphicsPipeline ssaoGraphicsPipeline(ssaoGraphicsPipelineCreateInfo);
+	lv::GraphicsPipeline ssaoGraphicsPipeline;
+    ssaoGraphicsPipeline.init(ssaoGraphicsPipelineCreateInfo);
 #pragma endregion SSAO_SHADER
 
     // *************** SSAO blur shader ***************
 #pragma region SSAO_BLUR_SHADER
-#ifdef LV_BACKEND_VULKAN
-    ssaoBlurLayout.init();
-#endif
-
     //Fragment
-    lv::ShaderModuleCreateInfo fragSsaoBlurCreateInfo{};
-#ifdef LV_BACKEND_VULKAN
-    fragSsaoBlurCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-#endif
-    fragSsaoBlurCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/blur"));
+    lv::ShaderBundle fragBlurShaderBundle;
+    fragBlurShaderBundle.init("assets/shaders/shader_bundles/fragment/blur.json");
 
-    lv::ShaderModule fragSsaoBlurModule(fragSsaoBlurCreateInfo);
+    lv::ShaderModuleCreateInfo fragBlurCreateInfo{};
+    fragBlurCreateInfo.shaderBundle = &fragBlurShaderBundle;
+    fragBlurCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
+    fragBlurCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/blur"));
+
+    lv::ShaderModule fragBlurModule;
+    fragBlurModule.init(fragBlurCreateInfo);
     
     //Shader
-	lv::GraphicsPipelineCreateInfo ssaoBlurGraphicsPipelineCreateInfo{};
+	lv::GraphicsPipelineCreateInfo blurGraphicsPipelineCreateInfo{};
 	
-	ssaoBlurGraphicsPipelineCreateInfo.vertexShaderModule = &vertTriangleModule;
-	ssaoBlurGraphicsPipelineCreateInfo.fragmentShaderModule = &fragSsaoBlurModule;
-#ifdef LV_BACKEND_VULKAN
-	ssaoBlurGraphicsPipelineCreateInfo.pipelineLayout = &ssaoBlurLayout;
-#endif
-	ssaoBlurGraphicsPipelineCreateInfo.renderPass = &ssaoBlurRenderPass.renderPass;
+	blurGraphicsPipelineCreateInfo.vertexShaderModule = &vertTriangleModule;
+	blurGraphicsPipelineCreateInfo.fragmentShaderModule = &fragBlurModule;
+	blurGraphicsPipelineCreateInfo.pipelineLayout = &ssaoBlurLayout;
+	blurGraphicsPipelineCreateInfo.renderPass = &ssaoBlurRenderPass.renderPass;
 
-    ssaoBlurGraphicsPipelineCreateInfo.config.depthTestEnable = LV_TRUE;
-    ssaoBlurGraphicsPipelineCreateInfo.config.depthWriteEnable = LV_FALSE;
-    ssaoBlurGraphicsPipelineCreateInfo.config.depthOp = LV_COMPARE_OP_NOT_EQUAL;
+    blurGraphicsPipelineCreateInfo.config.depthTestEnable = LV_TRUE;
+    blurGraphicsPipelineCreateInfo.config.depthWriteEnable = LV_FALSE;
+    blurGraphicsPipelineCreateInfo.config.depthOp = LV_COMPARE_OP_NOT_EQUAL;
 
-	lv::GraphicsPipeline ssaoBlurGraphicsPipeline(ssaoBlurGraphicsPipelineCreateInfo);
+	lv::GraphicsPipeline blurGraphicsPipeline;
+    blurGraphicsPipeline.init(blurGraphicsPipelineCreateInfo);
 #pragma endregion SSAO_BLUR_SHADER
 
     // *************** Skylight shader ***************
 #pragma region SKYLIGHT_SHADER
-#ifdef LV_BACKEND_VULKAN
-    skylightLayout.pushConstantRanges.resize(1);
-	skylightLayout.pushConstantRanges[0].stageFlags = LV_SHADER_STAGE_VERTEX_BIT | LV_SHADER_STAGE_FRAGMENT_BIT;
-	skylightLayout.pushConstantRanges[0].offset = 0;
-	skylightLayout.pushConstantRanges[0].size = sizeof(glm::mat4);
-
-    skylightLayout.init();
-#endif
-
     //Vertex
+    lv::ShaderBundle vertSkylightShaderBundle;
+    vertSkylightShaderBundle.init("assets/shaders/shader_bundles/vertex/skylight.json");
+
     lv::ShaderModuleCreateInfo vertSkylightCreateInfo{};
-#ifdef LV_BACKEND_VULKAN
-    vertSkylightCreateInfo.shaderType = LV_SHADER_STAGE_VERTEX_BIT;
-#endif
+    vertSkylightCreateInfo.shaderBundle = &vertSkylightShaderBundle;
+    vertSkylightCreateInfo.shaderStage = LV_SHADER_STAGE_VERTEX_BIT;
     vertSkylightCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("vertex/skylight"));
 
-    lv::ShaderModule vertSkylightModule(vertSkylightCreateInfo);
+    lv::ShaderModule vertSkylightModule;
+    vertSkylightModule.init(vertSkylightCreateInfo);
 
     //Fragment
+    lv::ShaderBundle fragSkylightShaderBundle;
+    fragSkylightShaderBundle.init("assets/shaders/shader_bundles/fragment/skylight.json");
+
     lv::ShaderModuleCreateInfo fragSkylightCreateInfo{};
-#ifdef LV_BACKEND_VULKAN
-    fragSkylightCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-#endif
+    fragSkylightCreateInfo.shaderBundle = &fragSkylightShaderBundle;
+    fragSkylightCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
     fragSkylightCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/skylight"));
 
-    lv::ShaderModule fragSkylightModule(fragSkylightCreateInfo);
+    lv::ShaderModule fragSkylightModule;
+    fragSkylightModule.init(fragSkylightCreateInfo);
     
     //Shader
 	lv::GraphicsPipelineCreateInfo skylightGraphicsPipelineCreateInfo{};
 	
 	skylightGraphicsPipelineCreateInfo.vertexShaderModule = &vertSkylightModule;
 	skylightGraphicsPipelineCreateInfo.fragmentShaderModule = &fragSkylightModule;
-#ifdef LV_BACKEND_VULKAN
 	skylightGraphicsPipelineCreateInfo.pipelineLayout = &skylightLayout;
-#endif
 	skylightGraphicsPipelineCreateInfo.renderPass = &mainRenderPass.renderPass;
 
     skylightGraphicsPipelineCreateInfo.vertexDescriptor = lv::Vertex3D::getVertexDescriptor();
 
     skylightGraphicsPipelineCreateInfo.config.depthWriteEnable = LV_FALSE;
 
-	lv::GraphicsPipeline skylightGraphicsPipeline(skylightGraphicsPipelineCreateInfo);
+	lv::GraphicsPipeline skylightGraphicsPipeline;
+    skylightGraphicsPipeline.init(skylightGraphicsPipelineCreateInfo);
 #pragma endregion SKYLIGHT_SHADER
 
     // *************** Main shader ***************
 #pragma region MAIN_SHADER
-#ifdef LV_BACKEND_VULKAN
-    mainLayout.init();
-#endif
-
     //Fragment
+    lv::ShaderBundle fragMainShaderBundle;
+    fragMainShaderBundle.init("assets/shaders/shader_bundles/fragment/main.json");
+
     lv::ShaderModuleCreateInfo fragMainCreateInfo{};
-#ifdef LV_BACKEND_VULKAN
-    fragMainCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-#endif
+    fragMainCreateInfo.shaderBundle = &fragMainShaderBundle;
+    fragMainCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
     fragMainCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/main"));
 
-    lv::ShaderModule fragMainModule(fragMainCreateInfo);
+    lv::ShaderModule fragMainModule;
+    fragMainModule.init(fragMainCreateInfo);
     
     //Shader
 	lv::GraphicsPipelineCreateInfo mainGraphicsPipelineCreateInfo{};
 	
 	mainGraphicsPipelineCreateInfo.vertexShaderModule = &vertTriangleModule;
 	mainGraphicsPipelineCreateInfo.fragmentShaderModule = &fragMainModule;
-#ifdef LV_BACKEND_VULKAN
 	mainGraphicsPipelineCreateInfo.pipelineLayout = &mainLayout;
-#endif
 	mainGraphicsPipelineCreateInfo.renderPass = &mainRenderPass.renderPass;
 
     mainGraphicsPipelineCreateInfo.config.depthTestEnable = LV_TRUE;
     mainGraphicsPipelineCreateInfo.config.depthWriteEnable = LV_FALSE;
     mainGraphicsPipelineCreateInfo.config.depthOp = LV_COMPARE_OP_NOT_EQUAL;
 
-	lv::GraphicsPipeline mainGraphicsPipeline(mainGraphicsPipelineCreateInfo);
+	lv::GraphicsPipeline mainGraphicsPipeline;
+    mainGraphicsPipeline.init(mainGraphicsPipelineCreateInfo);
 #pragma endregion MAIN_SHADER
 
     // *************** Point light shader ***************
@@ -1262,42 +1344,91 @@ int main() {
 #pragma endregion POINT_LIGHT_SHADER
     */
 
+    // *************** Downsample shader ***************
+#pragma region DOWNSAMPLE_SHADER
+    //Fragment
+    lv::ShaderBundle fragDownsampleShaderBundle;
+    fragDownsampleShaderBundle.init("assets/shaders/shader_bundles/fragment/downsample.json");
+
+    lv::ShaderModuleCreateInfo fragDownsampleCreateInfo{};
+    fragDownsampleCreateInfo.shaderBundle = &fragDownsampleShaderBundle;
+    fragDownsampleCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
+    fragDownsampleCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/downsample"));
+
+    lv::ShaderModule fragDownsampleModule;
+    fragDownsampleModule.init(fragDownsampleCreateInfo);
+    
+    //Shader
+	lv::GraphicsPipelineCreateInfo downsampleGraphicsPipelineCreateInfo{};
+	
+	downsampleGraphicsPipelineCreateInfo.vertexShaderModule = &vertTriangleModule;
+	downsampleGraphicsPipelineCreateInfo.fragmentShaderModule = &fragDownsampleModule;
+	downsampleGraphicsPipelineCreateInfo.pipelineLayout = &bloomLayout;
+	downsampleGraphicsPipelineCreateInfo.renderPass = &bloomRenderPass.renderPasses[0];
+
+	lv::GraphicsPipeline downsampleGraphicsPipeline;
+    downsampleGraphicsPipeline.init(downsampleGraphicsPipelineCreateInfo);
+#pragma endregion DOWNSAMPLE_SHADER
+
+    // *************** Upsample shader ***************
+#pragma region UPSAMPLE_SHADER
+    //Fragment
+    lv::ShaderBundle fragUpsampleShaderBundle;
+    fragUpsampleShaderBundle.init("assets/shaders/shader_bundles/fragment/upsample.json");
+
+    lv::ShaderModuleCreateInfo fragUpsampleCreateInfo{};
+    fragUpsampleCreateInfo.shaderBundle = &fragUpsampleShaderBundle;
+    fragUpsampleCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
+    fragUpsampleCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/upsample"));
+
+    lv::ShaderModule fragUpsampleModule;
+    fragUpsampleModule.init(fragUpsampleCreateInfo);
+    
+    //Shader
+	lv::GraphicsPipelineCreateInfo upsampleGraphicsPipelineCreateInfo{};
+	
+	upsampleGraphicsPipelineCreateInfo.vertexShaderModule = &vertTriangleModule;
+	upsampleGraphicsPipelineCreateInfo.fragmentShaderModule = &fragUpsampleModule;
+	upsampleGraphicsPipelineCreateInfo.pipelineLayout = &bloomLayout;
+	upsampleGraphicsPipelineCreateInfo.renderPass = &bloomRenderPass.renderPasses[1];
+    
+    bloomRenderPass.renderPasses[1].colorAttachments[0].blendEnable = LV_TRUE;
+    bloomRenderPass.renderPasses[1].colorAttachments[0].srcRgbBlendFactor = LV_BLEND_FACTOR_ONE;
+    bloomRenderPass.renderPasses[1].colorAttachments[0].dstRgbBlendFactor = LV_BLEND_FACTOR_ONE;
+    bloomRenderPass.renderPasses[1].colorAttachments[0].srcAlphaBlendFactor = LV_BLEND_FACTOR_ONE;
+    bloomRenderPass.renderPasses[1].colorAttachments[0].dstAlphaBlendFactor = LV_BLEND_FACTOR_ONE;
+
+	lv::GraphicsPipeline upsampleGraphicsPipeline;
+    upsampleGraphicsPipeline.init(upsampleGraphicsPipelineCreateInfo);
+#pragma endregion UPSAMPLE_SHADER
+
     // *************** HDR shader ***************
 #pragma region HDR_SHADER
-    /*
-    lv::GET_SHADER_LAYOUT(SHADER_TYPE_HDR).pushConstantRanges.resize(1);
-	lv::GET_SHADER_LAYOUT(SHADER_TYPE_HDR).pushConstantRanges[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-	lv::GET_SHADER_LAYOUT(SHADER_TYPE_HDR).pushConstantRanges[0].offset = 0;
-	lv::GET_SHADER_LAYOUT(SHADER_TYPE_HDR).pushConstantRanges[0].size = sizeof(PCSkylightVP);
-    */
-
-#ifdef LV_BACKEND_VULKAN
-    hdrLayout.init();
-#endif
-
     //Fragment
+    lv::ShaderBundle fragHdrShaderBundle;
+    fragHdrShaderBundle.init("assets/shaders/shader_bundles/fragment/hdr.json");
+
     lv::ShaderModuleCreateInfo fragHdrCreateInfo{};
-#ifdef LV_BACKEND_VULKAN
-    fragHdrCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-#endif
+    fragHdrCreateInfo.shaderBundle = &fragHdrShaderBundle;
+    fragHdrCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
     fragHdrCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/hdr"));
 
-    lv::ShaderModule fragHdrModule(fragHdrCreateInfo);
+    lv::ShaderModule fragHdrModule;
+    fragHdrModule.init(fragHdrCreateInfo);
     
     //Shader
 	lv::GraphicsPipelineCreateInfo hdrGraphicsPipelineCreateInfo{};
 	
 	hdrGraphicsPipelineCreateInfo.vertexShaderModule = &vertTriangleModule;
 	hdrGraphicsPipelineCreateInfo.fragmentShaderModule = &fragHdrModule;
-#ifdef LV_BACKEND_VULKAN
 	hdrGraphicsPipelineCreateInfo.pipelineLayout = &hdrLayout;
-#endif
 	hdrGraphicsPipelineCreateInfo.renderPass = &hdrRenderPass.renderPass;
 
 	//hdrGraphicsPipelineCreateInfo.vertexBindingDescriptions = MainVertex::getBindingDescriptions();
 	//hdrGraphicsPipelineCreateInfo.vertexAttributeDescriptions = MainVertex::getAttributeDescriptions();
 
-	lv::GraphicsPipeline hdrGraphicsPipeline(hdrGraphicsPipelineCreateInfo);
+	lv::GraphicsPipeline hdrGraphicsPipeline;
+    hdrGraphicsPipeline.init(hdrGraphicsPipelineCreateInfo);
 #pragma endregion HDR_SHADER
 
     //Compute pipelines
@@ -1331,16 +1462,72 @@ int main() {
 #pragma endregion DISASSEMBLE_DEPTH_SHADER
     */
 
+    //Command buffers
+    //lv::CommandBuffer depthBlitCommandBuffer;
+    //depthBlitCommandBuffer.init();
+
+    //Semaphores
+    /*
+    lv::Semaphore deferredRenderSemaphore;
+    deferredRenderSemaphore.init();
+
+    lv::Semaphore depthBlitSemaphore;
+    depthBlitSemaphore.init();
+    */
+
     //Light
     lv::DirectLight directLight;
     directLight.light.direction = glm::normalize(glm::vec3(2.0f, -4.0f, 1.0f));
 
-#ifdef LV_BACKEND_VULKAN
     //Uniform buffers
     lv::UniformBuffer deferredVPUniformBuffer(sizeof(glm::mat4));
-    lv::UniformBuffer shadowVPUniformBuffers[CASCADE_COUNT] = { lv::UniformBuffer(sizeof(PCShadowVP)), lv::UniformBuffer(sizeof(PCShadowVP)), lv::UniformBuffer(sizeof(PCShadowVP)) };
+    lv::UniformBuffer shadowVPUniformBuffers[CASCADE_COUNT] = { lv::UniformBuffer(sizeof(glm::mat4)), lv::UniformBuffer(sizeof(glm::mat4)), lv::UniformBuffer(sizeof(glm::mat4)) };
     lv::UniformBuffer mainShadowUniformBuffer(sizeof(glm::mat4) * CASCADE_COUNT);
     lv::UniformBuffer mainVPUniformBuffer(sizeof(UBOMainVP));
+
+    //Textures
+    std::default_random_engine rndEngine((unsigned)time(0));
+	std::uniform_real_distribution<int8_t> rndInt8Dist(-128, 127);
+
+    std::vector<glm::i8vec4> ssaoNoise(AO_NOISE_TEX_SIZE * AO_NOISE_TEX_SIZE);
+    for (uint32_t i = 0; i < ssaoNoise.size(); i++) {
+        ssaoNoise[i] = glm::i8vec4(rndInt8Dist(rndEngine), rndInt8Dist(rndEngine), 0, 0);
+    }
+
+	std::uniform_real_distribution<float> rndFloatDist(-128, 127);
+
+    std::vector<glm::i8vec4> hbaoNoise(AO_NOISE_TEX_SIZE * AO_NOISE_TEX_SIZE);
+    for (uint32_t i = 0; i < hbaoNoise.size(); i++) {
+        glm::vec4 rndVec(rndFloatDist(rndEngine), rndFloatDist(rndEngine), 0, 0);
+        while (glm::length2(rndVec) > 1.0f) {
+            rndVec = glm::vec4(rndFloatDist(rndEngine), rndFloatDist(rndEngine), 0, 0);
+        }
+        uint8_t index = rand() % 2;
+        rndVec[(index + 1) % 2] /= fabs(rndVec[index]);
+        rndVec[index] = rndVec[index] > 0.0f ? 1.0f : -1.0f;
+        hbaoNoise[i] = glm::i8vec4(rndVec[0] * 127, rndVec[1] * 127, 0, 0);
+    }
+
+    lv::Texture aoNoiseTex;
+    aoNoiseTex.format = LV_FORMAT_R8G8B8A8_SNORM;
+    aoNoiseTex.textureData = hbaoNoise.data();
+    aoNoiseTex.width = AO_NOISE_TEX_SIZE;
+    aoNoiseTex.height = AO_NOISE_TEX_SIZE;
+    aoNoiseTex.sampler.addressMode = LV_SAMPLER_ADDRESS_MODE_REPEAT;
+    aoNoiseTex.init(0);
+
+    //Skylight
+    lv::Skylight skylight(0);
+    skylight.load(0, "assets/skylight/canyon.hdr", equiToCubeGraphicsPipeline);
+    //return 0;
+    skylight.createIrradianceMap(0, irradianceGraphicsPipeline);
+    skylight.createPrefilteredMap(0, prefilteredGraphicsPipeline);
+
+    lv::Texture brdfLutTexture;
+    brdfLutTexture.load("assets/textures/brdf_lut.png");
+    brdfLutTexture.init(0);
+
+    //Descriptor sets
 
     //Deferred descriptor set
     lv::DescriptorSet deferredDecriptorSet(deferredLayout, 0);
@@ -1352,175 +1539,14 @@ int main() {
     lv::DescriptorSet shadowDecriptorSets[CASCADE_COUNT] = { lv::DescriptorSet(shadowLayout, 0), lv::DescriptorSet(shadowLayout, 0), lv::DescriptorSet(shadowLayout, 0) };
     for (uint8_t i = 0; i < CASCADE_COUNT; i++) {
         shadowDecriptorSets[i].addBinding(shadowVPUniformBuffers[i].descriptorInfo(), 0);
-
         shadowDecriptorSets[i].init();
     }
-#endif
-
-    //Game
-#ifdef LV_BACKEND_VULKAN
-    Game game(deferredLayout);
-#elif defined LV_BACKEND_METAL
-    Game game;
-#endif
-    //game.filename = "sandbox/game.json";
-    /*
-    Scene::meshDataDir = "sandbox/assets/scenes/meshData";
-    game.addScene();
-    game.scene().filename = game.filename.substr(0, game.filename.find_last_of("/")) + "/assets/scenes/scene" + std::to_string(0) + ".json";
-    game.scene().loaded = true;
-    */
-    game.loadFromFile();
-
-    //Scene& scene = game.scenes[0];
-
-    //Scene
-    //Scene& scene = game.addScene();
-    //scene.name = "scene0";
-    //scene.filename = "sandbox/assets/scenes/scene0.json";
-
-    //scene.loadFromFile();
-
-    //Models
-
-    //Model 1
-    /*
-    Entity entity(game.scene().addEntity(), game.scene().registry);
-    lv::MeshLoader meshLoader
-#ifdef LV_BACKEND_VULKAN
-        (deferredLayout)
-#endif
-    ;// = entity.addComponent<lv::ModelComponent>(SHADER_TYPE_DEFERRED);
-    //lv::ModelComponent model(SHADER_TYPE_DEFERRED);
-    meshLoader.loadFromFile("sandbox/assets/models/backpack/backpack.obj");
-    //meshLoader.init();
-
-    for (uint8_t i = 0; i < meshLoader.meshes.size(); i++) {
-        entt::entity entityID = game.scene().addEntity();
-        game.scene().registry.emplace<lv::TransformComponent>(entityID);
-        game.scene().registry.emplace<lv::MeshComponent>(entityID, meshLoader.meshes[i]);
-        game.scene().registry.emplace<lv::MaterialComponent>(entityID
-#ifdef LV_BACKEND_VULKAN
-        , deferredLayout
-#endif
-        );
-        entity.getComponent<lv::NodeComponent>().childs.push_back(entityID);
-        game.scene().registry.get<lv::NodeComponent>(entityID).parent = entity.ID;
-    }
-
-    lv::TransformComponent& transformComponent = entity.addComponent<lv::TransformComponent>();
-    //lv::TransformComponent transform;
-    transformComponent.scale = glm::vec3(0.5f);
-    //transform.position.y = 1.0f;
-
-    entity.addComponent<lv::MaterialComponent>(
-#ifdef LV_BACKEND_VULKAN
-        deferredLayout
-#endif
-    );
-    //lv::MaterialComponent material(SHADER_TYPE_DEFERRED);
-    //materialComponent.init();
-    //material.material.roughness = 0.6f;
-    //material.material.metallic = 0.8f;
-
-    //Model 2
-    //lv::ModelComponent model(SHADER_TYPE_DEFERRED);
-    Entity entity2(game.scene().addEntity(), game.scene().registry);
-    std::array<lv::Texture*, 3> textures;
-    std::vector<std::string> textureFilenames = {
-        "albedo.png", "roughness.png", "metallic.png"//, "normal.png"
-    };
-    for (uint8_t i = 0; i < textures.size(); i++) {
-        textures[i] = new lv::Texture;
-        textures[i]->load(("sandbox/assets/textures/rust/" + textureFilenames[i]).c_str());
-        textures[i]->init();
-    }
-    lv::MeshComponent& meshComponent2 = entity2.addComponent<lv::MeshComponent>(
-#ifdef LV_BACKEND_VULKAN
-        deferredLayout
-#endif
-    );
-    meshComponent2.createPlane();
-    for (uint8_t i = 0; i < textures.size(); i++) {
-        //if (textures[i] != nullptr)
-        meshComponent2.addTexture(textures[i], i
-#ifdef LV_BACKEND_METAL
-            , lv::MeshComponent::bindingIndices[i]
-#endif
-        );
-    }
-#ifdef LV_BACKEND_VULKAN
-    entity2.getComponent<lv::MeshComponent>().descriptorSet.init();
-#endif
-
-    lv::TransformComponent& transformComponent2 = entity2.addComponent<lv::TransformComponent>();
-    //lv::TransformComponent transform;
-    transformComponent2.scale = glm::vec3(0.5f);
-    //transform.position.y = 1.0f;
-
-    entity2.addComponent<lv::MaterialComponent>(
-#ifdef LV_BACKEND_VULKAN
-        deferredLayout
-#endif
-    );
-    */
-
-    //Textures
-    std::default_random_engine rndEngine((unsigned)time(0));
-	std::uniform_real_distribution<int8_t> rndDist(-128, 127);
-
-    std::vector<glm::i8vec4> ssaoNoise(SSAO_NOISE_TEX_SIZE * SSAO_NOISE_TEX_SIZE);
-    for (uint32_t i = 0; i < ssaoNoise.size(); i++) {
-        ssaoNoise[i] = glm::i8vec4(rndDist(rndEngine), rndDist(rndEngine), 0, 0);
-    }
-
-    lv::Texture ssaoNoiseTex;
-    //ssaoNoiseTex.format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    ssaoNoiseTex.textureData = ssaoNoise.data();
-    ssaoNoiseTex.width = SSAO_NOISE_TEX_SIZE;
-    ssaoNoiseTex.height = SSAO_NOISE_TEX_SIZE;
-    ssaoNoiseTex.sampler.addressMode = LV_SAMPLER_ADDRESS_MODE_REPEAT;
-    ssaoNoiseTex.init();
-
-    /*
-    lv::TransformComponent terrainTransform;
-    //terrainTransform.position.x = 10.0f;
-
-    lv::MaterialComponent terrainMaterial(SHADER_TYPE_DEFERRED);
-    terrainMaterial.init();
-    terrainMaterial.material.roughness = 0.8f;
-    terrainMaterial.material.metallic = 0.1f;
-    */
-
-    //Textures
-    /*
-    lv::Texture grassTexture;
-    grassTexture.init("Assets/Textures/Grass/grass.jpg");
-
-    lv::DescriptorSet grassDS(SHADER_TYPE_DEFERRED, 2);
-    grassDS.addImageBinding(grassTexture.descriptorInfo(), 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-
-    grassDS.init();
-    */
-
-    //Skylight
-    lv::Skylight skylight;
-    skylight.load("assets/skylight/canyon.hdr", equiToCubeShaderCreateInfo);
-    skylight.createIrradianceMap(irradianceShaderCreateInfo);
-    skylight.createPrefilteredMap(prefilteredShaderCreateInfo);
-
-    lv::Texture brdfLutTexture;
-    brdfLutTexture.load("assets/textures/brdf_lut.png");
-    brdfLutTexture.init();
-
-#ifdef LV_BACKEND_VULKAN
-    //Descriptor sets
 
     //Skylight descriptor set
     lv::DescriptorSet skylightDescriptorSet(skylightLayout, 0);
     skylightDescriptorSet.addBinding(skylight.environmentMapSampler.descriptorInfo(skylight.environmentMapImageView), 0);
-
     skylightDescriptorSet.init();
+
     lv::DescriptorSet ssaoDescriptorSet(ssaoLayout, 0);
     SETUP_SSAO_DESCRIPTORS
     ssaoDescriptorSet.init();
@@ -1541,6 +1567,20 @@ int main() {
     SETUP_MAIN_2_DESCRIPTORS
     mainDescriptorSet2.init();
 
+    lv::DescriptorSet downsampleDescriptorSets[BLOOM_MIP_COUNT] = { lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0) };
+    downsampleDescriptorSets[0].addBinding(bloomRenderPass.downsampleSampler.descriptorInfo(mainRenderPass.colorImageView), 0);
+    downsampleDescriptorSets[0].init();
+    for (uint8_t i = 1; i < BLOOM_MIP_COUNT; i++) {
+        downsampleDescriptorSets[i].addBinding(bloomRenderPass.downsampleSampler.descriptorInfo(bloomRenderPass.colorImageViews[i - 1]), 0);
+        downsampleDescriptorSets[i].init();
+    }
+
+    lv::DescriptorSet upsampleDescriptorSets[BLOOM_MIP_COUNT - 1] = { lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0) };
+    for (uint8_t i = 0; i < BLOOM_MIP_COUNT - 1; i++) {
+        upsampleDescriptorSets[i].addBinding(bloomRenderPass.upsampleSampler.descriptorInfo(bloomRenderPass.colorImageViews[i + 1]), 0);
+        upsampleDescriptorSets[i].init();
+    }
+
     lv::DescriptorSet hdrDescriptorSet(hdrLayout, 0);
     SETUP_HDR_DESCRIPTORS
     hdrDescriptorSet.init();
@@ -1556,52 +1596,15 @@ int main() {
 	lv::Viewport mainViewport(0, 0, SRC_WIDTH/* * 2*/, SRC_HEIGHT/* * 2*/);
     lv::Viewport halfMainViewport(0, 0, SRC_WIDTH / 2, SRC_HEIGHT / 2);
     lv::Viewport shadowViewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
-#endif
-
-    //Vertex buffers
-    //VertexBuffer vertexBuffer(vertices.data(), vertices.size() * sizeof(Vertex), indices);
-
-    //Terrain
-    /*
-    std::vector<lv::MainVertex> vertices;
-    std::vector<uint32_t> indices;
-
-    //Noise
-    const siv::PerlinNoise::seed_type seed = (unsigned)time(0);
-	const siv::PerlinNoise perlin{ seed };
-
-    for (uint8_t z = 0; z < CHUNK_WIDTH; z++) {
-        for (uint8_t x = 0; x < CHUNK_WIDTH; x++) {
-            float noise = perlin.octave2D_01(x * 0.01f, z * 0.01f, 16);
-
-            lv::MainVertex vertex;
-            vertex.position = glm::vec3(((int)x - CHUNK_WIDTH * 0.5f) * 0.02f, noise, ((int)z - CHUNK_WIDTH * 0.5f) * 0.02f);
-            vertex.texCoord = glm::vec2((float)x / 15.0f, (float)z / 15.0f);
-            vertex.normal = glm::vec3(0.0f, 1.0f, 0.0f);
-
-            vertices.push_back(vertex);
-            
-            const uint32_t crntIndices[6] = {0, CHUNK_WIDTH + 1, 1, 0, CHUNK_WIDTH, CHUNK_WIDTH + 1};
-            if (z < CHUNK_WIDTH - 2 && x < CHUNK_WIDTH - 2 && x > 1 && z > 1) {
-				for (int i = 0; i < 6; i++) {
-					indices.push_back(vertices.size() + crntIndices[i]);
-				}
-			}
-        }
-    }
-
-    lv::VertexBuffer vertexBuffer(vertices.data(), vertices.size() * sizeof(lv::MainVertex), indices);
-    */
 
     //camera.aspectRatio = (float)SRC_WIDTH / (float)SRC_HEIGHT;
     g_game->scene().editorCamera.yScroll = g_game->scene().editorCamera.farPlane * 0.05f;
 
     //SSAO Kernel
-    /*
     std::uniform_real_distribution<float> randomFloats(0.0, 1.0); // random floats between [0.0, 1.0]
     std::default_random_engine generator;
-    std::vector<glm::vec3> ssaoKernel;
-    for (unsigned int i = 0; i < 64; ++i) {
+    std::vector<glm::vec3> ssaoKernel(SSAO_KERNEL_SIZE);
+    for (unsigned int i = 0; i < SSAO_KERNEL_SIZE; ++i) {
         glm::vec3 sample(
             randomFloats(generator) * 2.0 - 1.0, 
             randomFloats(generator) * 2.0 - 1.0, 
@@ -1610,19 +1613,17 @@ int main() {
         sample  = glm::normalize(sample);
         sample *= randomFloats(generator);
         
-        float scale = (float)i / 64.0; 
+        float scale = (float)i / (float)SSAO_KERNEL_SIZE; 
         scale = lerp(0.1f, 1.0f, scale * scale);
-        sample *= scale;
-        ssaoKernel.push_back(sample);  
+        ssaoKernel[i] = sample * scale;
     }
 
     //Printing kernel
-    std::cout << "const vec3 SSAO_KERNEL[64] = vec3[](" << std::endl;
+    std::cout << "const vec3 SSAO_KERNEL[SSAO_KERNEL_SIZE] = vec3[](" << std::endl;
     for (uint8_t i = 0; i < ssaoKernel.size(); i++) {
         std::cout << "    vec3(" << ssaoKernel[i].x << ", " << ssaoKernel[i].y << ", " << ssaoKernel[i].z << ")" << (i < ssaoKernel.size() - 1 ? "," : "") << std::endl;
     }
     std::cout << ");" << std::endl;
-    */
 
     //Editor
     Editor editor(window
@@ -1630,6 +1631,9 @@ int main() {
     , deferredLayout
 #endif
     );
+
+    editor.init();
+
     editor.createViewportSet(
 #ifdef LV_BACKEND_VULKAN
         hdrRenderPass.colorImageView.imageViews, hdrRenderPass.colorSampler.sampler
@@ -1637,6 +1641,8 @@ int main() {
         hdrRenderPass.colorImage.images
 #endif
     );
+
+    //return 0;
 
     while (lvndWindowIsOpen(window)) {
         //Delta time
@@ -1650,7 +1656,7 @@ int main() {
 		std::string newTitle = std::string(SRC_TITLE) + " " + dtStr + " ms";
 		lvndSetWindowTitle(window, newTitle.c_str());
 
-        //shadowFrameCounter = (shadowFrameCounter + 1) % 24;
+        shadowFrameCounter = (shadowFrameCounter + 1) % SHADOW_FRAME_COUNT;
 
         lvndPollEvents(window);
         //std::cout << "Shift: " << lvndGetModifier(window.window, LVND_MODIFIER_SHIFT) << " : " << "Command: " << lvndGetModifier(window.window, LVND_MODIFIER_SUPER) << std::endl;
@@ -1659,11 +1665,9 @@ int main() {
 
         if (windowResized) {
             //Wait for device
-#ifdef LV_BACKEND_VULKAN
-            lv::g_device->waitIdle();
-#endif
+            device.waitIdle();
             
-            lv::g_swapChain->resize(window);
+            swapChain.resize(window);
 
             /*
             camera.aspectRatio = (float)window.width / (float)window.height;
@@ -1723,12 +1727,14 @@ int main() {
 
         game.scene().camera->aspectRatio = float(editor.viewportWidth) / float(editor.viewportHeight);
         if (editor.activeViewport == VIEWPORT_TYPE_SCENE) {
-            if (editor.viewportActive) {
+            if (editor.cameraActive) {
                 game.scene().editorCamera.inputs(window, dt, mouseX, mouseY, width, height);
             } else {
                 game.scene().editorCamera.firstClick = true;
             }
         }
+        //game.scene().camera->rotation.y += 60.0f * dt;
+
         //std::cout << game.scene().camera->aspectRatio << " : " << game.scene().camera-> << std::endl;
         game.scene().camera->loadViewProj();
 
@@ -1744,121 +1750,55 @@ int main() {
         //Rendering
 
         //Deferred render pass
+        deferredRenderPass.commandBuffer.bind();
+
         deferredRenderPass.framebuffer.bind();
 
         deferredGraphicsPipeline.bind();
-#ifdef LV_BACKEND_VULKAN
         mainViewport.bind();
+
         deferredDecriptorSet.bind();
-#endif
 
         glm::mat4 viewProj = g_game->scene().camera->projection * g_game->scene().camera->view;
 
-#ifdef LV_BACKEND_VULKAN
         deferredVPUniformBuffer.upload(&viewProj);
-#elif defined LV_BACKEND_METAL
-        deferredGraphicsPipeline.uploadPushConstants(&viewProj, 1, sizeof(glm::mat4), LV_SHADER_STAGE_VERTEX_BIT);
-#endif
 
-        //For each model
-        /*
-        material.uploadUniforms();
-        deferredGraphicsPipeline.uploadPushConstants(&transform.model, 0);
-        model.render();
-
-        material2.uploadUniforms();
-        deferredGraphicsPipeline.uploadPushConstants(&transform2.model, 0);
-        model2.render();
-        */
         game.scene().render(deferredGraphicsPipeline);
-        /*
-        materialComponent.uploadUniforms();
-        deferredGraphicsPipeline.uploadPushConstants(&transformComponent.model, 0);
-        modelComponent.render();
-        */
-
-        //Terrain
-        /*
-        terrainMaterial.uploadUniforms(lv::GET_SHADER_LAYOUT(SHADER_TYPE_DEFERRED).pipelineLayout);
-        deferredGraphicsPipeline.uploadPushConstants(&terrainTransform.model, 0);
-        grassDS.bind(lv::GET_SHADER_LAYOUT(SHADER_TYPE_DEFERRED).pipelineLayout);
-        vertexBuffer.bind();
-        vertexBuffer.render();
-        */
 
         deferredRenderPass.framebuffer.unbind();
 
-		deferredRenderPass.framebuffer.render();
+        deferredRenderPass.commandBuffer.unbind();
 
-        //glm::mat4 shadowViewProj;
+		deferredRenderPass.commandBuffer.submit(/*nullptr, &deferredRenderSemaphore*/);
 
         //Shadow matrices
         getLightMatrices(directLight.light.direction);
 
         //Shadow render pass
+        shadowRenderPass.commandBuffer.bind();
 
-        //Shadow matrices
-        //glm::mat4 shadowProj = glm::ortho(-2.0f, 2.0f, -2.0f, 2.0f, camera.nearPlane, camera.farPlane);
-        //glm::mat4 shadowView = glm::lookAt(glm::vec3(-2.0f, 4.0f, -1.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-
-        //shadowVPs[0] = shadowProj * shadowView;
-
-        /*
         for (uint8_t i = 0; i < CASCADE_COUNT; i++) {
-            glm::mat4 shadowProj = glm::ortho(-2.0f, 2.0f, -2.0f, 2.0f, camera.nearPlane, camera.farPlane);
-            glm::mat4 shadowView = glm::lookAt(glm::vec3(-2.0f, 4.0f, -1.0f), glm::vec3(i - 1, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-
-            //glm::mat4 shadowvp = shadowProj * shadowView;
-            shadowVPs[i] = shadowProj * shadowView;
-        }
-        */
-        shadowRenderPass.framebuffer.bind();
-
-        //PCShadowVP pcShadowVPs[CASCADE_COUNT];
-        for (uint8_t i = 0; i < CASCADE_COUNT; i++) {
-            //if ((shadowFrameCounter + shadowStartingFrames[i]) % shadowRefreshFrames[i] == 0) {
+            if (updateShadowFrames[i]) {
                 //std::cout << "Cascade: " << (int)i << std::endl;
+                shadowRenderPass.framebuffers[i].bind();
 
                 shadowGraphicsPipeline.bind();
-#ifdef LV_BACKEND_VULKAN
                 shadowViewport.bind();
-#endif
-
-#ifdef LV_BACKEND_VULKAN
+                
                 shadowDecriptorSets[i].bind();
-#endif
 
-                //PCShadowVP pcShadowVP = {shadowVPs[i]};
-                PCShadowVP pcShadowVP{shadowVPs[i], (int)i};
-                //std::cout << pcShadowVP.layerIndex << std::endl;
-#ifdef LV_BACKEND_VULKAN
-                shadowVPUniformBuffers[i].upload(&pcShadowVP);
-#elif defined LV_BACKEND_METAL
-                shadowGraphicsPipeline.uploadPushConstants(&pcShadowVP, 0, sizeof(PCShadowVP), LV_SHADER_STAGE_VERTEX_BIT);
-#endif
+                //PCShadowVP pcShadowVP{shadowVPs[i], (int)i};
+                shadowVPUniformBuffers[i].upload(&shadowVPs[i]);
 
-                //For each model
-                /*
-                shadowGraphicsPipeline.uploadPushConstants(&transform.model.model, 0);
-                model.renderShadows();
-
-                shadowGraphicsPipeline.uploadPushConstants(&transform2.model.model, 0);
-                model2.renderShadows();
-                */
                 game.scene().renderShadows(shadowGraphicsPipeline);
 
-                //Terrain
-                /*
-                shadowGraphicsPipeline.uploadPushConstants(&terrainTransform.model, 0);
-                vertexBuffer.bind();
-                vertexBuffer.render();
-                */
-            //}
+                shadowRenderPass.framebuffers[i].unbind();
+            }
         }
 
-        shadowRenderPass.framebuffer.unbind();
+        shadowRenderPass.commandBuffer.unbind();
 
-        shadowRenderPass.framebuffer.render();
+        shadowRenderPass.commandBuffer.submit();
 
         //Disassemble depth compute pass
         /*
@@ -1875,26 +1815,29 @@ int main() {
                                        (SRC_WIDTH + 64 - 1) / 64, (SRC_HEIGHT + 64 - 1) / 64, 1);
         */
 
+        //Creating depth image half the original size
+        /*
+        depthBlitCommandBuffer.bind();
+
+        deferredRenderPass.halfDepthImage.blitToFromImage(0, deferredRenderPass.depthImage);
+
+        depthBlitCommandBuffer.unbind();
+
+        depthBlitCommandBuffer.submit(&deferredRenderSemaphore, &depthBlitSemaphore);
+        */
+
+        //deferredRenderPass.halfDepthImage.transitionLayout(0, 0, LV_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+        //deferredRenderPass.depthImage.transitionLayout(0, 0, LV_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+
         //SSAO render pass
+        ssaoRenderPass.commandBuffer.bind();
+
         ssaoRenderPass.framebuffer.bind();
 
         ssaoGraphicsPipeline.bind();
-#ifdef LV_BACKEND_VULKAN
         halfMainViewport.bind();
+
         ssaoDescriptorSet.bind();
-#elif defined LV_BACKEND_METAL
-        //disasmComputePass.outputColorAttachment.bind(0);
-        //disasmComputePass.outputColorAttachmentSampler.bind(0);
-
-        deferredRenderPass.depthImage.bind(0);
-        deferredRenderPass.depthSampler.bind(0);
-
-        deferredRenderPass.normalRoughnessImage.bind(1);
-        deferredRenderPass.normalRoughnessSampler.bind(1);
-
-        ssaoNoiseTex.image.bind(2);
-        ssaoNoiseTex.sampler.bind(2);
-#endif
 
         PCSsaoVP pcSsaoVP{g_game->scene().camera->projection, g_game->scene().camera->view, glm::inverse(viewProj)};
         ssaoGraphicsPipeline.uploadPushConstants(&pcSsaoVP, 0
@@ -1907,144 +1850,139 @@ int main() {
 
         ssaoRenderPass.framebuffer.unbind();
 
-        ssaoRenderPass.framebuffer.render();
+        ssaoRenderPass.commandBuffer.unbind();
+
+        ssaoRenderPass.commandBuffer.submit(/*&depthBlitSemaphore*/);
 
         //SSAO blur render pass
+        ssaoBlurRenderPass.commandBuffer.bind();
+
         ssaoBlurRenderPass.framebuffer.bind();
 
-        ssaoBlurGraphicsPipeline.bind();
-#ifdef LV_BACKEND_VULKAN
+        blurGraphicsPipeline.bind();
         mainViewport.bind();
+
         ssaoBlurDescriptorSet.bind();
-#elif defined LV_BACKEND_METAL
-        ssaoRenderPass.colorImage.bind(0);
-        ssaoRenderPass.colorSampler.bind(0);
-#endif
 
         swapChain.renderFullscreenTriangle();
 
         ssaoBlurRenderPass.framebuffer.unbind();
 
-        ssaoBlurRenderPass.framebuffer.render();
+        ssaoBlurRenderPass.commandBuffer.unbind();
+
+        ssaoBlurRenderPass.commandBuffer.submit();
 
         //Main render pass
+        mainRenderPass.commandBuffer.bind();
+
         mainRenderPass.framebuffer.bind();
 
         //Skylight
         skylightGraphicsPipeline.bind();
-#ifdef LV_BACKEND_VULKAN
         mainViewport.bind();
+
         skylightDescriptorSet.bind();
-#elif defined LV_BACKEND_METAL
-        skylight.environmentMapImage.bind(0);
-        skylight.environmentMapSampler.bind(0);
-#endif
 
         glm::mat4 skylightViewProj = g_game->scene().camera->projection * glm::mat4(glm::mat3(g_game->scene().camera->view));
     
-#ifdef LV_BACKEND_VULKAN
-        skylightGraphicsPipeline.uploadPushConstants(&skylightViewProj, 0);
-#elif defined LV_BACKEND_METAL
-        skylightGraphicsPipeline.uploadPushConstants(&skylightViewProj, 0, sizeof(glm::mat4), LV_SHADER_STAGE_VERTEX_BIT);
+        skylightGraphicsPipeline.uploadPushConstants(&skylightViewProj, 0
+#ifdef LV_BACKEND_METAL
+        , sizeof(glm::mat4), LV_SHADER_STAGE_VERTEX_BIT
 #endif
+        );
 
-		//swapChain.activeFramebuffer->encoder->setCullMode(LV_CULL_MODE_NONE);
-
-        //std::cout << lv::CubeVertexBuffer::vertices.size() << " : " << lv::CubeVertexBuffer::indices.size() << std::endl;
-
-#ifdef LV_BACKEND_VULKAN
-        skylight.vertexBuffer->bindVertexBuffer();
+        skylight.vertexBuffer->bindVertexBuffer(
+#ifdef LV_BACKEND_METAL
+            lv::Vertex3D::BINDING_INDEX
+#endif
+        );
         skylight.indexBuffer->bindIndexBuffer(LV_INDEX_TYPE_UINT32);
         skylight.indexBuffer->renderIndexed(sizeof(uint32_t));
-#elif defined LV_BACKEND_METAL
-        skylight.vertexBuffer->bindVertexBuffer(lv::Vertex3D::BINDING_INDEX);
-        skylight.indexBuffer->renderIndexed(LV_INDEX_TYPE_UINT32, sizeof(uint32_t));
-#endif
 
         //Main
         mainGraphicsPipeline.bind();
-#ifdef LV_BACKEND_VULKAN
         mainViewport.bind();
+
         mainDescriptorSet0.bind();
         mainDescriptorSet1.bind();
         mainDescriptorSet2.bind();
-#elif defined LV_BACKEND_METAL
-		shadowRenderPass.depthImage.bind(0);
-		shadowRenderPass.depthSampler.bind(0);
-
-		deferredRenderPass.depthImage.bind(1);
-		deferredRenderPass.depthSampler.bind(1);
-
-        deferredRenderPass.normalRoughnessImage.bind(2);
-		deferredRenderPass.normalRoughnessSampler.bind(2);
-
-		deferredRenderPass.albedoMetallicImage.bind(3);
-		deferredRenderPass.albedoMetallicSampler.bind(3);
-
-        skylight.irradianceMapImage.bind(4);
-        skylight.irradianceMapSampler.bind(4);
-
-        skylight.prefilteredMapImage.bind(5);
-        skylight.prefilteredMapSampler.bind(5);
-
-        brdfLutTexture.image.bind(6);
-        brdfLutTexture.sampler.bind(6);
-
-		ssaoBlurRenderPass.colorImage.bind(7);
-		ssaoBlurRenderPass.colorSampler.bind(7);
-#endif
 
         UBOMainVP uboMainVP{glm::inverse(viewProj), g_game->scene().camera->position};
-#ifdef LV_BACKEND_VULKAN
         mainVPUniformBuffer.upload(&uboMainVP);
-#elif defined LV_BACKEND_METAL
-        mainGraphicsPipeline.uploadPushConstants(&uboMainVP, 2, sizeof(UBOMainVP), LV_SHADER_STAGE_FRAGMENT_BIT);
-#endif
 
-        directLight.uploadUniforms();
-#ifdef LV_BACKEND_VULKAN
-        //UBOMainShadow uboMainShadow{};
-        //for (uint8_t i = 0; i < CASCADE_COUNT; i++) uboMainShadow.VPs[i] = shadowVPs[i];
-        mainShadowUniformBuffer.upload(shadowVPs.data());
-#elif defined LV_BACKEND_METAL
-        directLight.lightUniformBuffer.bindToFragmentShader(0);
-
-        mainGraphicsPipeline.uploadPushConstants(shadowVPs.data(), 1, shadowVPs.size() * sizeof(glm::mat4), LV_SHADER_STAGE_FRAGMENT_BIT);
-#endif
+        directLight.lightUniformBuffer.upload(&directLight.light);
+        mainShadowUniformBuffer.upload(shadowVPs);
 
         swapChain.renderFullscreenTriangle();
 
         mainRenderPass.framebuffer.unbind();
 
-        mainRenderPass.framebuffer.render();
+        mainRenderPass.commandBuffer.unbind();
+
+        mainRenderPass.commandBuffer.submit();
+
+        //Downsample render pass
+        bloomRenderPass.downsampleCommandBuffer.bind();
+
+        for (uint8_t i = 0; i < BLOOM_MIP_COUNT; i++) {
+            bloomRenderPass.downsampleFramebuffers[i].bind();
+
+            downsampleGraphicsPipeline.bind();
+            bloomRenderPass.viewports[i].bind();
+
+            downsampleDescriptorSets[i].bind();
+
+            swapChain.renderFullscreenTriangle();
+
+            bloomRenderPass.downsampleFramebuffers[i].unbind();
+        }
+
+        bloomRenderPass.downsampleCommandBuffer.unbind();
+
+        bloomRenderPass.downsampleCommandBuffer.submit();
+
+        //Upsample render pass
+        bloomRenderPass.upsampleCommandBuffer.bind();
+
+        for (int8_t i = BLOOM_MIP_COUNT - 2; i >= 0; i--) {
+            bloomRenderPass.upsampleFramebuffers[i].bind();
+
+            upsampleGraphicsPipeline.bind();
+            bloomRenderPass.viewports[i].bind();
+
+            upsampleDescriptorSets[i].bind();
+
+            swapChain.renderFullscreenTriangle();
+
+            bloomRenderPass.upsampleFramebuffers[i].unbind();
+        }
+
+        bloomRenderPass.upsampleCommandBuffer.unbind();
+
+        bloomRenderPass.upsampleCommandBuffer.submit();
 
         //HDR render pass
+        hdrRenderPass.commandBuffer.bind();
+
         hdrRenderPass.framebuffer.bind();
 
         hdrGraphicsPipeline.bind();
-#ifdef LV_BACKEND_VULKAN
         mainViewport.bind();
-        hdrDescriptorSet.bind();
-#elif defined LV_BACKEND_METAL
-        mainRenderPass.colorImage.bind(0);
-        mainRenderPass.colorSampler.bind(0);
-#endif
 
-        //PCSkylightVP pcHdrVP{camera.projection, camera.view, camera.position};
-        //hdrGraphicsPipeline.uploadPushConstants(&pcHdrVP, 0);
+        hdrDescriptorSet.bind();
 
         swapChain.renderFullscreenTriangle();
 
         hdrRenderPass.framebuffer.unbind();
 
-        hdrRenderPass.framebuffer.render();
+        hdrRenderPass.commandBuffer.unbind();
+
+        hdrRenderPass.commandBuffer.submit();
 
         //Present
-        swapChain.framebuffer.bind();
+        swapChain.commandBuffer.bind();
 
-#ifdef LV_BACKEND_METAL
-		swapChain.synchronize();
-#endif
+        swapChain.framebuffer.bind();
         
         //GUI
         editor.newFrame();
@@ -2056,35 +1994,44 @@ int main() {
         editor.createSceneHierarchy();
         editor.createPropertiesPanel();
         editor.createAssetsPanel();
+        editor.createGraphicsPanel();
         //ImGui::ShowDemoWindow();
+
+        if (game.scene().graphicsSettings.aoType != game.scene().graphicsSettings.prevAoType) {
+            switch (game.scene().graphicsSettings.aoType) {
+                case AMBIENT_OCCLUSION_TYPE_NONE:
+                    break;
+                case AMBIENT_OCCLUSION_TYPE_SSAO:
+                    aoNoiseTex.image.fillWithData(0, ssaoNoise.data(), 4);
+
+                    break;
+                case AMBIENT_OCCLUSION_TYPE_HBAO:
+                    aoNoiseTex.image.fillWithData(0, hbaoNoise.data(), 4);
+
+                    break;
+                default:
+                    break;
+            }
+            fragSsaoModule.recompile();
+            ssaoGraphicsPipeline.recompile();
+        }
 
         editor.endDockspace();
 
-        //std::cout << "Swap chain dependency count: " << swapChain.renderPass.dependencies.size() << std::endl;
         editor.render();
     
 		swapChain.framebuffer.unbind();
 
+        swapChain.commandBuffer.unbind();
+
         swapChain.renderAndPresent();
     }
 
-#ifdef LV_BACKEND_VULKAN
     device.waitIdle();
 
     directLight.destroy();
 
-    std::cout << "Light destroyed" << std::endl;
-
-    /*
-    model.destroy();
-    material.destroy();
-
-    model2.destroy();
-    material2.destroy();
-    */
     game.destroy();
-
-    std::cout << "Game destroyed" << std::endl;
 
     deferredVPUniformBuffer.destroy();
     for (auto& shadowVPUniformBuffer : shadowVPUniformBuffers)
@@ -2092,14 +2039,12 @@ int main() {
     mainShadowUniformBuffer.destroy();
     mainVPUniformBuffer.destroy();
 
-    std::cout << "Uniform buffers destroyed" << std::endl;
-
     deferredRenderPass.renderPass.destroy();
     deferredRenderPass.framebuffer.destroy();
 
     shadowRenderPass.renderPass.destroy();
-    //for (uint8_t i = 0; i < CASCADE_COUNT; i++)
-        shadowRenderPass.framebuffer/*s[i]*/.destroy();
+    for (uint8_t i = 0; i < CASCADE_COUNT; i++)
+        shadowRenderPass.framebuffers[i].destroy();
 
     ssaoRenderPass.renderPass.destroy();
     ssaoRenderPass.framebuffer.destroy();
@@ -2109,8 +2054,6 @@ int main() {
 
     mainRenderPass.renderPass.destroy();
     mainRenderPass.framebuffer.destroy();
-
-    std::cout << "Framebuffers destroyed" << std::endl;
 
     vertCubemapModule.destroy();
     fragEquiToCubeModule.destroy();
@@ -2129,8 +2072,8 @@ int main() {
     fragSsaoModule.destroy();
     ssaoGraphicsPipeline.destroy();
 
-    fragSsaoBlurModule.destroy();
-    ssaoBlurGraphicsPipeline.destroy();
+    fragBlurModule.destroy();
+    blurGraphicsPipeline.destroy();
 
     vertSkylightModule.destroy();
     fragSkylightModule.destroy();
@@ -2145,14 +2088,6 @@ int main() {
     //compDisasmModule.destroy();
     //disasmComputePipeline.destroy();
 
-    std::cout << "Shaders destroyed" << std::endl;
-
-    /*
-    deferredRenderPass.positionDepthAttachment.destroy();
-    deferredRenderPass.positionDepthAttachmentView.destroy();
-    deferredRenderPass.positionDepthAttachmentSampler.destroy();
-    */
-
     deferredRenderPass.normalRoughnessImage.destroy();
     deferredRenderPass.normalRoughnessImageView.destroy();
     deferredRenderPass.normalRoughnessSampler.destroy();
@@ -2166,8 +2101,8 @@ int main() {
 
     shadowRenderPass.depthImage.destroy();
     shadowRenderPass.depthImageView.destroy();
-    //for (uint8_t i = 0; i < CASCADE_COUNT; i++)
-    //    shadowRenderPass.depthAttachmentViews[i].destroy();
+    for (uint8_t i = 0; i < CASCADE_COUNT; i++)
+        shadowRenderPass.depthImageViews[i].destroy();
     shadowRenderPass.depthSampler.destroy();
 
     ssaoRenderPass.colorImage.destroy();
@@ -2182,29 +2117,23 @@ int main() {
     mainRenderPass.colorImageView.destroy();
     mainRenderPass.colorSampler.destroy();
 
-    std::cout << "Images destroyed" << std::endl;
-
     editor.destroy();
 
-    descriptorPool.destroy();
+#ifdef LV_BACKEND_VULKAN
     allocator.destroy();
+#endif
+    descriptorPool.destroy();
     swapChain.destroy();
 	device.destroy();
+#ifdef LV_BACKEND_VULKAN
     instance.destroy();
 
     lvndVulkanDestroyLayer(window);
-#elif defined LV_BACKEND_METAL
-    game.destroy();
-
-	device.destroy();
-
+#elif defined(LV_BACKEND_METAL)
     lvndMetalDestroyLayer(window);
 #endif
 
     lvndDestroyWindow(window);
-
-    //scene.saveToFile();
-    //game.saveToFile();
 
     return 0;
 }
@@ -2215,7 +2144,7 @@ void windowResizeCallback(LvndWindow* window, uint16_t width, uint16_t height) {
 }
 
 void scrollCallback(LvndWindow* window, double xoffset, double yoffset) {
-    if (g_editor->activeViewport == VIEWPORT_TYPE_SCENE) {
+    if (g_editor->activeViewport == VIEWPORT_TYPE_SCENE && g_editor->cameraActive) {
         g_game->scene().editorCamera.yScroll -= yoffset * g_game->scene().editorCamera.yScroll / (g_game->scene().editorCamera.yScroll + 1.0f) * SCROLL_SENSITIVITY;
         g_game->scene().editorCamera.yScroll = std::fmax(std::fmin(g_game->scene().editorCamera.yScroll, g_game->scene().editorCamera.farPlane), g_game->scene().editorCamera.farPlane / 100000.0f);
     }
@@ -2245,70 +2174,70 @@ std::vector<glm::vec4> getFrustumCorners(const glm::mat4& proj, const glm::mat4&
     return frustumCorners;
 }
 
-void getLightMatrix(glm::vec3 lightDir, float nearPlane, float farPlane, bool firstCascade) {
-    glm::mat4 lightProj = glm::perspective(glm::radians(g_game->scene().camera->fov), g_game->scene().camera->aspectRatio, nearPlane, farPlane);
+void getLightMatrix(glm::vec3 lightDir, float nearPlane, float farPlane, uint8_t index) {
+    updateShadowFrames[index] = true;//(shadowFrameCounter + shadowStartingFrames[index]) % shadowRefreshFrames[index] == 0;
+    if (updateShadowFrames[index]) {
+        glm::mat4 lightProj = glm::perspective(glm::radians(g_game->scene().camera->fov), g_game->scene().camera->aspectRatio, nearPlane, farPlane);
 
-    std::vector<glm::vec4> frustumCorners = getFrustumCorners(lightProj, g_game->scene().camera->view);
+        std::vector<glm::vec4> frustumCorners = getFrustumCorners(lightProj, g_game->scene().camera->view);
 
-    //Get frustum center
-    glm::vec3 center = glm::vec3(0.0f, 0.0f, 0.0f);
-    for (auto &corner : frustumCorners) {
-        center += glm::vec3(corner);
+        //Get frustum center
+        glm::vec3 center = glm::vec3(0.0f, 0.0f, 0.0f);
+        for (auto &corner : frustumCorners) {
+            center += glm::vec3(corner);
+        }
+        center /= frustumCorners.size();
+
+        glm::mat4 view = glm::lookAt(center, center + lightDir, glm::vec3(0.0f, 1.0f, 0.0f));
+
+        //Get min/max corner coordinates
+        float maxX = std::numeric_limits<float>::min();
+        float maxY = std::numeric_limits<float>::min();
+        float maxZ = std::numeric_limits<float>::min();
+        float minX = std::numeric_limits<float>::max();
+        float minY = std::numeric_limits<float>::max();
+        float minZ = std::numeric_limits<float>::max();
+
+        for (auto &corner : frustumCorners) {
+            auto trf = view * corner;
+
+            minX = std::min(minX, trf.x);
+            maxX = std::max(maxX, trf.x);
+            minY = std::min(minY, trf.y);
+            maxY = std::max(maxY, trf.y);
+            minZ = std::min(minZ, trf.z);
+            maxZ = std::max(maxZ, trf.z);
+        }
+
+        float zAdd = g_game->scene().camera->farPlane * 0.5f;
+        minZ -= zAdd;
+        maxZ += zAdd;
+        /*
+        float xyAdd = SHADOW_FAR_PLANE * 0.08f;
+        if (firstCascade) {
+            minX -= xyAdd;
+            maxX += xyAdd;
+            minY -= xyAdd;
+            maxY += xyAdd;
+        }
+        */
+        /*
+        std::cout << nearPlane << ", " << farPlane << std::endl;
+        std::cout << minX << ", " << maxX << " : " << minY << ", " << maxY << " : " << minZ << ", " << maxZ << std::endl;
+        */
+
+        glm::mat4 projection = glm::ortho(minX, maxX, minY, maxY, minZ, maxZ);
+
+        shadowVPs[index] = projection * view;
     }
-    center /= frustumCorners.size();
-
-    glm::mat4 view = glm::lookAt(center, center + lightDir, glm::vec3(0.0f, 1.0f, 0.0f));
-
-    //Get min/max corner coordinates
-    float maxX = std::numeric_limits<float>::min();
-    float maxY = std::numeric_limits<float>::min();
-    float maxZ = std::numeric_limits<float>::min();
-    float minX = std::numeric_limits<float>::max();
-    float minY = std::numeric_limits<float>::max();
-    float minZ = std::numeric_limits<float>::max();
-
-    for (auto &corner : frustumCorners) {
-        auto trf = view * corner;
-
-        minX = std::min(minX, trf.x);
-        maxX = std::max(maxX, trf.x);
-        minY = std::min(minY, trf.y);
-        maxY = std::max(maxY, trf.y);
-        minZ = std::min(minZ, trf.z);
-        maxZ = std::max(maxZ, trf.z);
-    }
-
-    float zAdd = g_game->scene().camera->farPlane * 0.5f;
-    minZ -= zAdd;
-    maxZ += zAdd;
-    /*
-    float xyAdd = SHADOW_FAR_PLANE * 0.08f;
-    if (firstCascade) {
-        minX -= xyAdd;
-        maxX += xyAdd;
-        minY -= xyAdd;
-        maxY += xyAdd;
-    }
-    */
-    /*
-    std::cout << nearPlane << ", " << farPlane << std::endl;
-    std::cout << minX << ", " << maxX << " : " << minY << ", " << maxY << " : " << minZ << ", " << maxZ << std::endl;
-    */
-
-    glm::mat4 projection = glm::ortho(minX, maxX, minY, maxY, minZ, maxZ);
-
-    shadowVPs.push_back(projection * view);
 }
 
 void getLightMatrices(glm::vec3 lightDir) {
-    //Clearing
-    shadowVPs.clear();
-
     for (int i = 0; i < CASCADE_COUNT; i++) {
         if (i == 0) {
-            getLightMatrix(lightDir, g_game->scene().camera->nearPlane, cascadeLevels[0], true);
+            getLightMatrix(lightDir, g_game->scene().camera->nearPlane, cascadeLevels[0], 0);
         } else {
-            getLightMatrix(lightDir, cascadeLevels[i - 1], cascadeLevels[i], false);
+            getLightMatrix(lightDir, cascadeLevels[i - 1], cascadeLevels[i], i);
         }
     }
 }
@@ -2339,7 +2268,7 @@ void newEntityPlane() {
         g_game->deferredLayout
 #endif
     );
-    meshComponent.createPlane();
+    meshComponent.createPlane(0);
     entity.addComponent<lv::MaterialComponent>(
 #ifdef LV_BACKEND_VULKAN
         g_game->deferredLayout

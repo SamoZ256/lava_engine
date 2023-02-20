@@ -6,9 +6,11 @@ layout (location = 0) out float FragColor;
 
 layout (location = 0) in vec2 inTexCoord;
 
-layout (binding = 0) uniform sampler2D u_depth;
-layout (binding = 1) uniform sampler2D u_normalRoughness;
-layout (binding = 2) uniform sampler2D u_ssaoNoise;
+layout (constant_id = 0) const int aoType = 0;
+
+layout (set = 0, binding = 0) uniform sampler2D u_depth;
+layout (set = 0, binding = 1) uniform sampler2D u_normalRoughness;
+layout (set = 0, binding = 2) uniform sampler2D u_ssaoNoise;
 
 /*
 layout (binding = 3) uniform SSAO_KERNEL {
@@ -22,75 +24,38 @@ layout (push_constant) uniform VP  {
     mat4 invViewProj;
 } u_vp;
 
-const int SSAO_KERNEL_SIZE = 24;
-const float SSAO_RADIUS = 0.4;
-const float RANGE_CHECK_RADIUS = 0.02;
+const float INFINITY = 1.0 / 0.0;
 
-const vec3 SSAO_KERNEL[64] = vec3[](
+const int SSAO_KERNEL_SIZE = 24;
+const float SSAO_RADIUS = 0.8;
+const float HBAO_RADIUS = 4.0;
+//const float RANGE_CHECK_RADIUS = 0.02;
+
+const vec3 SSAO_KERNEL[SSAO_KERNEL_SIZE] = vec3[](
     vec3(-0.0622651, -0.0516783, 0.0374449),
-    vec3(0.0302176, -0.0200379, 0.0166269),
-    vec3(-0.0390986, 0.0401571, 0.00738356),
-    vec3(0.00983945, 0.0370422, 0.035414),
-    vec3(0.0523208, 0.0687755, 0.0504415),
-    vec3(-0.0280151, -0.0102105, 0.0620991),
-    vec3(0.0602267, 0.069226, 0.0123528),
-    vec3(0.0285927, -0.0144757, 0.0328993),
-    vec3(-0.0625902, 0.00486652, 0.0646069),
-    vec3(0.00588934, 0.00137853, 0.00922296),
-    vec3(0.0345845, -0.0213982, 0.0946942),
-    vec3(-0.000672068, 0.0240709, 0.00316105),
-    vec3(-0.0166647, 0.0169044, 0.00253135),
-    vec3(0.0127063, 0.00861719, 0.0402493),
-    vec3(-0.0185948, -0.0267613, 0.138175),
-    vec3(0.00785665, -0.0342657, 0.0356098),
-    vec3(-0.00279815, -0.0268175, 0.00407524),
-    vec3(-0.00839346, -0.0667035, 0.0363405),
-    vec3(0.00458419, 0.0101013, 0.00270968),
-    vec3(0.0271658, -0.00899945, 0.00779216),
-    vec3(0.11128, 0.119109, 0.0137799),
-    vec3(0.0379422, 0.053585, 0.0952886),
-    vec3(-0.0731075, -0.0513046, 0.0836565),
-    vec3(0.0495465, -0.0285149, 0.0123632),
-    vec3(-0.0281168, -0.10963, 0.0879173),
-    vec3(-0.164272, -0.152799, 0.0194657),
-    vec3(0.0138705, -0.156125, 0.0938625),
-    vec3(-0.0235614, -0.0525998, 0.00553039),
-    vec3(-0.157122, 0.0382268, 0.0307511),
-    vec3(-0.154707, 0.0928639, 0.0572261),
-    vec3(-0.173392, -0.123376, 0.0691542),
-    vec3(-0.0563887, 0.17184, 0.149005),
-    vec3(0.067844, -0.0637417, 0.145913),
-    vec3(0.140394, -0.176461, 0.146532),
-    vec3(0.175029, 0.159593, 0.151579),
-    vec3(0.0270448, -0.184119, 0.028695),
-    vec3(0.125719, -0.0983488, 0.144692),
-    vec3(0.0752899, 0.000905001, 0.0988445),
-    vec3(0.208785, 0.343314, 0.0226372),
-    vec3(-0.0877636, -0.0162507, 0.0969601),
-    vec3(0.243579, -0.258952, 0.068858),
-    vec3(-0.00264632, 0.0201146, 0.0127595),
-    vec3(0.0341593, -0.0260185, 0.0276118),
-    vec3(0.258152, 0.0200024, 0.0513822),
-    vec3(0.12844, -0.0651461, 0.0843168),
-    vec3(0.156461, 0.360706, 0.0766686),
-    vec3(-0.00812766, 0.0267197, 0.00100736),
-    vec3(0.0216424, 0.00413512, 0.0279841),
-    vec3(-0.478214, 0.345469, 0.0660385),
-    vec3(-0.093043, -0.132376, 0.19712),
-    vec3(0.285112, 0.0937665, 0.387254),
-    vec3(-0.0123833, 0.0165029, 0.0132211),
-    vec3(0.0215764, 0.419197, 0.466108),
-    vec3(0.22667, -0.302599, 0.14933),
-    vec3(-0.191782, -0.101208, 0.19595),
-    vec3(-0.109642, -0.0156432, 0.0858681),
-    vec3(0.0490018, -0.255871, 0.405244),
-    vec3(0.074718, -0.0710762, 0.0508888),
-    vec3(-0.216605, 0.222528, 0.59692),
-    vec3(-0.193871, -0.337433, 0.121619),
-    vec3(-0.517975, -0.634932, 0.336064),
-    vec3(-0.291782, 0.288196, 0.660576),
-    vec3(-0.00885274, -0.179628, 0.0218339),
-    vec3(0.161253, -0.383984, 0.0959743)
+    vec3(0.0306225, -0.0203063, 0.0168497),
+    vec3(-0.0411804, 0.0422952, 0.00777669),
+    vec3(0.0110055, 0.0414319, 0.0396107),
+    vec3(0.0631798, 0.0830497, 0.0609105),
+    vec3(-0.0369299, -0.0134597, 0.0818599),
+    vec3(0.0872061, 0.100237, 0.0178864),
+    vec3(0.045577, -0.0230743, 0.0524416),
+    vec3(-0.109747, 0.00853307, 0.113283),
+    vec3(0.0113271, 0.00265135, 0.0177387),
+    vec3(0.0726579, -0.044955, 0.198941),
+    vec3(-0.00153467, 0.0549661, 0.00721829),
+    vec3(-0.0411426, 0.0417342, 0.00624951),
+    vec3(0.0337328, 0.0228769, 0.106854),
+    vec3(-0.0528015, -0.075991, 0.39236),
+    vec3(0.0237407, -0.103542, 0.107603),
+    vec3(-0.00895408, -0.0858161, 0.0130408),
+    vec3(-0.0283149, -0.225021, 0.122593),
+    vec3(0.0162343, 0.0357724, 0.00959596),
+    vec3(0.1006, -0.0333268, 0.0288559),
+    vec3(0.429389, 0.459596, 0.0531716),
+    vec3(0.152051, 0.214739, 0.381863),
+    vec3(-0.303363, -0.212891, 0.347137),
+    vec3(0.212305, -0.122185, 0.0529759)
 );
 
 //Position reconstruction
@@ -104,19 +69,24 @@ vec3 reconstructPosFromDepth(in float depth) {
 }
 */
 
-void main()  {
+float linearizeDepth(float depth, float zNear, float zFar) {
+    return zNear * zFar / (zFar + depth * (zNear - zFar));
+}
+
+float ssao()  {
 	// Get G-Buffer values
     //vec4 positionDepth = texture(u_positionDepth, inTexCoord);
     float depth = texture(u_depth, inTexCoord).r;
-	vec3 fragPos = (u_vp.view * vec4(reconstructPosFromDepth(u_vp.invViewProj, inTexCoord, depth), 1.0)).xyz;
-    float viewZ = fragPos.z;
-	vec3 normal = normalize((u_vp.view * vec4(texture(u_normalRoughness, inTexCoord).xyz, 1.0)).xyz * 2.0 - 1.0);
+	vec3 fragPos = reconstructPosFromDepth(u_vp.invViewProj, inTexCoord, depth);
+    //float linearDepth = (u_vp.view * vec4(fragPos, 1.0)).z;
+	vec3 normal = normalize(texture(u_normalRoughness, inTexCoord).xyz * 2.0 - 1.0);
 
 	// Get a random vector using a noise lookup
 	ivec2 texDim = textureSize(u_depth, 0); 
 	ivec2 noiseDim = textureSize(u_ssaoNoise, 0);
+
 	const vec2 noiseUV = vec2(float(texDim.x) / float(noiseDim.x), float(texDim.y) / (noiseDim.y)) * inTexCoord;
-	vec3 randomVec = texture(u_ssaoNoise, noiseUV).xyz * 2.0 - 1.0;
+	vec3 randomVec = texture(u_ssaoNoise, noiseUV).xyz;
 	
 	// Create TBN matrix
 	vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
@@ -133,16 +103,17 @@ void main()  {
 		samplePos = fragPos + samplePos * SSAO_RADIUS;
 		
 		// project
-		vec4 offset = u_vp.projection * vec4(samplePos, 1.0);
+        vec4 viewSamplePos = u_vp.view * vec4(samplePos, 1.0);
+		vec4 offset = u_vp.projection * viewSamplePos;
 		offset.xy /= offset.w;
 		offset.xy = offset.xy * 0.5 + 0.5;
 		
 		float sampleDepth = texture(u_depth, vec2(offset.x, 1.0 - offset.y)).r;
-        float sampleViewZ = (u_vp.view * vec4(reconstructPosFromDepth(u_vp.invViewProj, vec2(offset.x, 1.0 - offset.y), sampleDepth), 1.0)).z;
+        float sampleLinearDepth = /*linearizeDepth(sampleDepth, 0.01, 1000.0);*/(u_vp.view * vec4(reconstructPosFromDepth(u_vp.invViewProj, vec2(offset.x, 1.0 - offset.y), sampleDepth), 1.0)).z;
         //FragColor = sampleDepth;
 
-		float rangeCheck = smoothstep(0.0, 1.0, RANGE_CHECK_RADIUS / abs(depth - sampleDepth));
-		occlusion += (viewZ <= sampleViewZ - bias ? rangeCheck : 0.0);
+		float rangeCheck = smoothstep(0.0, 1.0, SSAO_RADIUS / abs(sampleLinearDepth - viewSamplePos.z));
+		occlusion += (viewSamplePos.z <= sampleLinearDepth - bias ? rangeCheck : 0.0);
         //if (sampleDepth < texture(u_positionDepth, inTexCoord).w)
         //    occlusion += 1.0;
 	}
@@ -158,5 +129,103 @@ void main()  {
         }
     }
     */
-	FragColor = 1.0 - (occlusion / float(SSAO_KERNEL_SIZE));
+	return 1.0 - (occlusion / float(SSAO_KERNEL_SIZE));
+}
+
+/*
+float saturate(float a) {
+	return min(max(a, 0), 1);
+}
+*/
+
+float length2(vec3 a) {
+    return a.x * a.x + a.y * a.y + a.z * a.z;
+}
+
+float computeAO(vec3 normal, vec2 direction, vec2 texelSize, vec3 fragPos) {
+	//float RAD = 1.0;
+	//float RAD_FOR_DIRECTION = length(direction * vec2(10.0) / (vec2(abs(fragPos.z)) * screenSize));
+
+	vec3 viewVector = normalize(fragPos);
+
+	vec3 leftDirection = cross(viewVector, vec3(direction, 0));
+	//vec3 projectedNormal = normal - dot(leftDirection, normal) * leftDirection;
+	//projectedNormal = normalize(projectedNormal);
+
+	vec3 tangent = cross(/*projectedNormal*/normal, leftDirection);
+
+	const float bias = (3.141592 / 360.0) * 10.0;
+
+	float tangentAngle = atan(tangent.z / length(tangent.xy));
+	float sinTangentAngle = sin(tangentAngle + bias);
+
+	//float highestZ = -INFINITY;
+	//vec3 foundPos = vec3(0, 0, -INFINITY);
+    float horizonAngle = tangentAngle + bias;
+    vec3 horizonVector;// = vec3(0.0);
+	
+	for (int i = 2; i < 10; i++) {
+		vec2 marchPosition = inTexCoord + i * texelSize * direction * 8.0;
+		
+		float depth = texture(u_depth, vec2(marchPosition.x, marchPosition.y)).x;
+        //if (depth == 1.0) continue;
+        vec3 fragPosMarch = (u_vp.view * vec4(reconstructPosFromDepth(u_vp.invViewProj, marchPosition, depth), 1.0)).xyz;
+		
+		vec3 crntVector = fragPosMarch - fragPos; //inspre origine
+
+		//float rangeCheck = 1 - saturate(length(fragPosMarch - fragPos) / RAD-1);
+
+		if (length2(crntVector) < HBAO_RADIUS * HBAO_RADIUS) {
+			horizonAngle = max(horizonAngle, atan(crntVector.z / length(crntVector.xy)));
+            horizonVector = crntVector;
+		}
+	}
+    //horizonAngle = horizonAngle % 6.3;
+    //horizonAngle += 2.0;
+
+	float sinHorizonAngle = sin(horizonAngle);
+
+	//vec2 rez = vec2(saturate((sinHorizonAngle - sinTangentAngle)) / 2, projectedLen);
+
+    float norm = length(horizonVector) / HBAO_RADIUS;
+    float attenuation = 1.0 - norm * norm;
+
+    //if (horizonVector.x == 0.0) return 0.0;
+
+	return attenuation * (sinHorizonAngle - sinTangentAngle);
+}
+
+float hbao() {
+    vec2 screenSize = textureSize(u_depth, 0).xy;
+	vec2 noiseScale = vec2(screenSize.x / 8.0, screenSize.y / 8.0);
+	vec2 noisePos = inTexCoord * noiseScale;
+
+    float depth = texture(u_depth, inTexCoord).x;
+
+	vec3 fragPos = (u_vp.view * vec4(reconstructPosFromDepth(u_vp.invViewProj, inTexCoord, depth), 1.0)).xyz;
+
+	vec3 normal = normalize((u_vp.view * vec4(texture(u_normalRoughness, inTexCoord).xyz, 1.0)).xyz);
+
+	vec2 randomVec = texture(u_ssaoNoise, noisePos).xy;
+	//vec2 randomVec = normalize(vec2(0, 1) + texture(u_ssaoNoise, noisePos).xy * 1.0);
+
+    vec2 texelSize = 1.0 / screenSize;
+
+	float rez = 0.0;
+
+	rez += computeAO(normal, vec2(randomVec), texelSize, fragPos);
+	rez += computeAO(normal, -vec2(randomVec), texelSize, fragPos);
+	rez += computeAO(normal, vec2(-randomVec.y, -randomVec.x), texelSize, fragPos);
+	rez += computeAO(normal, vec2(randomVec.y, randomVec.x), texelSize, fragPos);
+
+    return 1.0 - rez * 0.25;
+}
+
+void main() {
+    if (aoType == 0)
+        FragColor = 1.0;
+    else if (aoType == 1)
+        FragColor = ssao();
+    else if (aoType == 2)
+        FragColor = hbao();
 }

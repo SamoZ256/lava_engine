@@ -116,7 +116,7 @@ float3 calcDirectLight(thread const float3& norm, thread const float3& viewDir, 
     float3 kD = float3(1.0) - kS;
     kD *= roughness;
     float NdotL = fast::max(dot(norm, L), 0.0);
-    return ((((((kD * albedo) / float3(3.1415927410125732421875)) + spec) * radiance) * NdotL) * u_light.color.xyz) * u_light.color.w;
+    return (((((((kD * albedo) / float3(3.1415927410125732421875)) + spec) * radiance) * NdotL) * u_light.color.xyz) * u_light.color.w) * 2.0;
 }
 
 static inline __attribute__((always_inline))
@@ -127,46 +127,46 @@ float getVisibility(thread const float3& position, thread const float3& normal, 
     for (int i = 0; i < 3; i++)
     {
         shadowCoord = u_shadow.VPs[i] * float4(position, 1.0);
-        float _350 = shadowCoord.w;
-        float4 _351 = shadowCoord;
-        float3 _354 = _351.xyz / float3(_350);
-        shadowCoord.x = _354.x;
-        shadowCoord.y = _354.y;
-        shadowCoord.z = _354.z;
-        float4 _361 = shadowCoord;
-        float2 _366 = (_361.xy * 0.5) + float2(0.5);
-        shadowCoord.x = _366.x;
-        shadowCoord.y = _366.y;
+        float _351 = shadowCoord.w;
+        float4 _352 = shadowCoord;
+        float3 _355 = _352.xyz / float3(_351);
+        shadowCoord.x = _355.x;
+        shadowCoord.y = _355.y;
+        shadowCoord.z = _355.z;
+        float4 _362 = shadowCoord;
+        float2 _367 = (_362.xy * 0.5) + float2(0.5);
+        shadowCoord.x = _367.x;
+        shadowCoord.y = _367.y;
         shadowCoord.y = 1.0 - shadowCoord.y;
-        bool _378 = shadowCoord.x >= 0.00999999977648258209228515625;
-        bool _385;
-        if (_378)
+        bool _379 = shadowCoord.x >= 0.00999999977648258209228515625;
+        bool _386;
+        if (_379)
         {
-            _385 = shadowCoord.x <= 0.9900000095367431640625;
+            _386 = shadowCoord.x <= 0.9900000095367431640625;
         }
         else
         {
-            _385 = _378;
+            _386 = _379;
         }
-        bool _391;
-        if (_385)
+        bool _392;
+        if (_386)
         {
-            _391 = shadowCoord.y >= 0.00999999977648258209228515625;
+            _392 = shadowCoord.y >= 0.00999999977648258209228515625;
         }
         else
         {
-            _391 = _385;
+            _392 = _386;
         }
-        bool _397;
-        if (_391)
+        bool _398;
+        if (_392)
         {
-            _397 = shadowCoord.y <= 0.9900000095367431640625;
+            _398 = shadowCoord.y <= 0.9900000095367431640625;
         }
         else
         {
-            _397 = _391;
+            _398 = _392;
         }
-        if (_397)
+        if (_398)
         {
             layer = i;
             break;
@@ -183,8 +183,8 @@ float getVisibility(thread const float3& position, thread const float3& normal, 
     }
     float bias0 = 0.0500000007450580596923828125 * tan(acos(dot(normal, u_light.direction)));
     bias0 = fast::clamp(bias0, 0.0, 0.001000000047497451305389404296875);
-    float4 _445 = float4(shadowCoord.xy, float(layer), shadowCoord.z - bias0);
-    return u_shadowMap.sample_compare(u_shadowMapSmplr, _445.xy, uint(round(_445.z)), _445.w);
+    float4 _446 = float4(shadowCoord.xy, float(layer), shadowCoord.z - bias0);
+    return u_shadowMap.sample_compare(u_shadowMapSmplr, _446.xy, uint(round(_446.z)), _446.w);
 }
 
 fragment main0_out main0(main0_in in [[stage_in]], constant LIGHT& u_light [[buffer(0)]], constant SHADOW& u_shadow [[buffer(1)]], constant VP& u_vp [[buffer(2)]], depth2d_array<float> u_shadowMap [[texture(0)]], texture2d<float> u_depth [[texture(1)]], texture2d<float> u_normalRoughness [[texture(2)]], texture2d<float> u_albedoMetallic [[texture(3)]], texturecube<float> u_irradianceMap [[texture(4)]], texturecube<float> u_prefilteredMap [[texture(5)]], texture2d<float> u_brdfLutMap [[texture(6)]], texture2d<float> u_ssaoTex [[texture(7)]], sampler u_shadowMapSmplr [[sampler(0)]], sampler u_depthSmplr [[sampler(1)]], sampler u_normalRoughnessSmplr [[sampler(2)]], sampler u_albedoMetallicSmplr [[sampler(3)]], sampler u_irradianceMapSmplr [[sampler(4)]], sampler u_prefilteredMapSmplr [[sampler(5)]], sampler u_brdfLutMapSmplr [[sampler(6)]], sampler u_ssaoTexSmplr [[sampler(7)]])

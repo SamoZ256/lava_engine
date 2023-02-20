@@ -8,15 +8,7 @@
 
 Editor* g_editor = nullptr;
 
-Editor::Editor(LvndWindow* aWindow
-#ifdef LV_BACKEND_VULKAN
-, lv::PipelineLayout& aDeferredLayout
-#endif
-) : window(aWindow)
-#ifdef LV_BACKEND_VULKAN
-, deferredLayout(aDeferredLayout)
-#endif
-{
+void Editor::init() {
 #ifdef LV_BACKEND_VULKAN
     VkDescriptorPoolSize poolSizes[] = {
         { VK_DESCRIPTOR_TYPE_SAMPLER, 1024 },
@@ -39,7 +31,7 @@ Editor::Editor(LvndWindow* aWindow
     poolInfo.poolSizeCount = std::size(poolSizes);
     poolInfo.pPoolSizes = poolSizes;
 
-    VK_CHECK_RESULT(vkCreateDescriptorPool(lv::g_device->device(), &poolInfo, nullptr, &imguiPool))
+    VK_CHECK_RESULT(vkCreateDescriptorPool(lv::g_device->device(), &poolInfo, nullptr, &imguiPool));
 #endif
 
     // 2: initialize imgui library
@@ -87,9 +79,9 @@ Editor::Editor(LvndWindow* aWindow
 
 #ifdef LV_BACKEND_VULKAN
     //execute a gpu command to upload imgui font textures
-    VkCommandBuffer commandBuffer = lv::g_device->beginSingleTimeCommands();
+    VkCommandBuffer commandBuffer = lv::g_device->beginSingleTimeCommands(0);
     ImGui_ImplVulkan_CreateFontsTexture(commandBuffer);
-    lv::g_device->endSingleTimeCommands(commandBuffer);
+    lv::g_device->endSingleTimeCommands(0, commandBuffer);
     
     //clear font textures from cpu data
     ImGui_ImplVulkan_DestroyFontUploadObjects();
@@ -99,24 +91,36 @@ Editor::Editor(LvndWindow* aWindow
 
     //Textures and descriptor sets
     playButtonTex.load("assets/textures/play_button.png");
-    playButtonTex.init();
+    playButtonTex.init(0);
     stopButtonTex.load("assets/textures/stop_button.png");
-    stopButtonTex.init();
+    stopButtonTex.init(0);
     folderTex.load("assets/textures/folder.png");
-    folderTex.init();
+    folderTex.init(0);
     fileTex.load("assets/textures/file.png");
-    fileTex.init();
+    fileTex.init(0);
+    translateButtonTex.load("assets/textures/translate_button.png");
+    translateButtonTex.init(0);
+    rotateButtonTex.load("assets/textures/rotate_button.png");
+    rotateButtonTex.init(0);
+    scaleButtonTex.load("assets/textures/scale_button.png");
+    scaleButtonTex.init(0);
 
 #ifdef LV_BACKEND_VULKAN
     playButtonSet = createDescriptorSet(playButtonTex.imageView.imageViews[0], playButtonTex.sampler.sampler);
     stopButtonSet = createDescriptorSet(stopButtonTex.imageView.imageViews[0], stopButtonTex.sampler.sampler);
     folderSet = createDescriptorSet(folderTex.imageView.imageViews[0], folderTex.sampler.sampler);
     fileSet = createDescriptorSet(fileTex.imageView.imageViews[0], fileTex.sampler.sampler);
+    translateButtonSet = createDescriptorSet(translateButtonTex.imageView.imageViews[0], translateButtonTex.sampler.sampler);
+    rotateButtonSet = createDescriptorSet(rotateButtonTex.imageView.imageViews[0], rotateButtonTex.sampler.sampler);
+    scaleButtonSet = createDescriptorSet(scaleButtonTex.imageView.imageViews[0], scaleButtonTex.sampler.sampler);
 #elif defined(LV_BACKEND_METAL)
     playButtonSet = playButtonTex.image.images[0];
     stopButtonSet = stopButtonTex.image.images[0];
     folderSet = folderTex.image.images[0];
     fileSet = fileTex.image.images[0];
+    translateButtonSet = translateButtonTex.image.images[0];
+    rotateButtonSet = rotateButtonTex.image.images[0];
+    scaleButtonSet = scaleButtonTex.image.images[0];
 #endif
 
     lvndGetWindowSize(window, &viewportWidth, &viewportHeight);
@@ -370,6 +374,7 @@ void Editor::createViewport(const char* title, ViewportType viewportType) {
         }
 
         //Gizmos
+        /*
         if (viewportActive) {
             //Getting gizmos type
             if (lvndGetKeyState(window, LVND_KEY_W) == LVND_STATE_PRESSED)
@@ -379,9 +384,10 @@ void Editor::createViewport(const char* title, ViewportType viewportType) {
             else if (lvndGetKeyState(window, LVND_KEY_R) == LVND_STATE_PRESSED)
                 gizmosType = ImGuizmo::OPERATION::SCALE;
         }
+        */
 
         //Drawing gizmos
-        if (g_game->scene().state == SCENE_STATE_EDITOR) {
+        //if (g_game->scene().state == SCENE_STATE_EDITOR) {
             if (selectedEntity.isValid()) {
                 if (selectedEntity.hasComponent<lv::TransformComponent>()) {
                     ImGuizmo::SetOrthographic(false);
@@ -390,25 +396,55 @@ void Editor::createViewport(const char* title, ViewportType viewportType) {
 
                     auto& transformComponent = selectedEntity.getComponent<lv::TransformComponent>();
 
-                    ImGuizmo::Manipulate(glm::value_ptr(g_game->scene().camera->view), glm::value_ptr(g_game->scene().camera->projection), gizmosType, ImGuizmo::LOCAL, glm::value_ptr(transformComponent.model.model));
+                    float* bounds = nullptr;
+                    glm::mat4 matrix = transformComponent.model.model;
+                    bool resizingBounds = (gizmosType == ImGuizmo::OPERATION::BOUNDS && selectedEntity.hasComponent<lv::RigidBodyComponent>() && selectedEntity.hasComponent<lv::BoxColliderComponent>());
+                    if (resizingBounds) {
+                        lv::RigidBodyComponent& rigidBodyComponent = selectedEntity.getComponent<lv::RigidBodyComponent>();
+                        lv::BoxColliderComponent& boxColliderComponent = selectedEntity.getComponent<lv::BoxColliderComponent>();
+                        glm::vec3 minMax[2] = {/*rigidBodyComponent.origin*/ - boxColliderComponent.scale * 0.5f, /*rigidBodyComponent.origin*/ + boxColliderComponent.scale * 0.5f};
+                        bounds = (float*)minMax;
+                        matrix = glm::translate(glm::mat4(1.0f), transformComponent.position);
+                        matrix *= glm::toMat4(glm::quat(glm::radians(transformComponent.rotation)));
+                        matrix = glm::translate(matrix, rigidBodyComponent.origin);
+                        matrix = glm::scale(matrix, boxColliderComponent.scale);
+                    }
+                    ImGuizmo::Manipulate(glm::value_ptr(g_game->scene().camera->view), glm::value_ptr(g_game->scene().camera->projection), gizmosType, ImGuizmo::LOCAL, glm::value_ptr(matrix), nullptr, nullptr, bounds);
 
                     if (ImGui::IsWindowFocused() && ImGuizmo::IsUsing()) {
-                        glm::mat4 localModel = transformComponent.model.model;
-                        entt::entity parent = selectedEntity.getComponent<lv::NodeComponent>().parent;
-                        if (parent != lv::Entity::nullEntity) {
-                            if (g_game->scene().registry->all_of<lv::TransformComponent>(parent))
-                                localModel = glm::inverse(g_game->scene().registry->get<lv::TransformComponent>(parent).model.model) * localModel;
+                        if (resizingBounds) {
+                            lv::RigidBodyComponent& rigidBodyComponent = selectedEntity.getComponent<lv::RigidBodyComponent>();
+                            lv::BoxColliderComponent& boxColliderComponent = selectedEntity.getComponent<lv::BoxColliderComponent>();
+                            /*
+                            glm::vec3 min = ((glm::vec3*)bounds)[0];
+                            glm::vec3 max = ((glm::vec3*)bounds)[1];
+                            rigidBodyComponent.origin = (min + max) * 0.5f;
+                            boxColliderComponent.scale = max - min;
+                            */
+                            decomposeModel(matrix, rigidBodyComponent.origin, transformComponent.rotation, boxColliderComponent.scale);
+                            rigidBodyComponent.origin -= transformComponent.position;
+                            //rigidBodyComponent.setOrigin();
+                            //boxColliderComponent.setScale();
+                            //boxColliderComponent.shape->setLocalScaling(btVector3(boxColliderComponent.scale.x, boxColliderComponent.scale.y, boxColliderComponent.scale.z));
+                        } else {
+                            glm::mat4 localModel = matrix;
+                            entt::entity parent = selectedEntity.getComponent<lv::NodeComponent>().parent;
+                            if (parent != lv::Entity::nullEntity) {
+                                if (g_game->scene().registry->all_of<lv::TransformComponent>(parent))
+                                    localModel = glm::inverse(g_game->scene().registry->get<lv::TransformComponent>(parent).model.model) * localModel;
+                            }
+                            decomposeModel(localModel, transformComponent.position, transformComponent.rotation, transformComponent.scale);
                         }
-                        decomposeModel(localModel, transformComponent.position, transformComponent.rotation, transformComponent.scale);
                     }
                 }
             }
-        }
+        //}
 
         //Play / pause button
         createToolBar();
 
         viewportActive = (ImGui::IsWindowFocused() && !ImGuizmo::IsUsing());
+        cameraActive = (viewportActive && ImGui::IsWindowHovered());
     }
 
     ImGui::End();
@@ -422,23 +458,55 @@ void Editor::createGameViewport() {
     createViewport("Game viewport", VIEWPORT_TYPE_GAME);
 }
 
+void Editor::drawGizmoSelection(ImTextureID imageSet, float x, float size, ImGuizmo::OPERATION aGizmosType) {
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(x);
+    std::string selectableID = "##" + std::to_string((int)aGizmosType);
+    if (ImGui::Selectable(selectableID.c_str(), gizmosType == aGizmosType, 0, ImVec2(size, size))) {
+        gizmosType = aGizmosType;
+    }
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(x);
+    ImGui::Image((ImTextureID)imageSet, ImVec2(size, size));
+}
+
 void Editor::createToolBar() {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(0, 0));
+    //ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8);
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
 
     //ImGui::Begin("##toolbar", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-    float size = 32.0f;//ImGui::GetWindowHeight() - 4.0f;
+    const float size = 32.0f;//ImGui::GetWindowHeight() - 4.0f;
     ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x * 0.5f - (size * 0.5f));
     ImGui::SetCursorPosY(size + 12.0f);
-    auto& buttonSet = g_game->scene().state == SCENE_STATE_EDITOR ? playButtonSet : stopButtonSet;
+    const auto& buttonSet = g_game->scene().state == SCENE_STATE_EDITOR ? playButtonSet : stopButtonSet;
     if (ImGui::ImageButton((ImTextureID)buttonSet, ImVec2(size, size)/*, ImVec2(0, 0), ImVec2(1, 1), 0*/)) {
         SceneState newState = (g_game->scene().state == SCENE_STATE_EDITOR ? SCENE_STATE_RUNTIME : SCENE_STATE_EDITOR);
         //App::g_application.scene().running = !App::g_application.scene().running;
         g_game->scene().changeState(newState);
     }
+
     ImGui::PopStyleVar(2);
     ImGui::PopStyleColor();
+
+    const float padding = 8.0f;
+
+    /*
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    drawList->ChannelsSplit(2);
+    drawList->ChannelsSetCurrent(0);
+    drawList->AddRectFilled(ImVec2(size + padding, size + 12.0f), ImVec2((size + padding) * 4.0f, size * 2.0f + 12.0f), IM_COL32(0.07f * 255, 0.075f * 255, 0.076f * 255, 255));
+    drawList->ChannelsMerge();
+    */
+    //ImDrawList* drawList = ImGui::GetWindowDrawList();
+    //ImVec2 windowPos = ImGui::GetWindowPos();
+    //drawList->AddRectFilled(ImVec2(windowPos.x + size + padding, windowPos.y + size + 12.0f), ImVec2(windowPos.x + (size + padding) * 4.0f - padding, windowPos.y + size * 2.0f + 12.0f), ImGui::ColorConvertFloat4ToU32(ImVec4(0.5f, 0.5f, 0.5f, 1.0f)));
+
+    drawGizmoSelection((ImTextureID)translateButtonSet, size + padding, size, ImGuizmo::OPERATION::TRANSLATE);
+    drawGizmoSelection((ImTextureID)rotateButtonSet, (size + padding) * 2.0f, size, ImGuizmo::OPERATION::ROTATE);
+    drawGizmoSelection((ImTextureID)scaleButtonSet, (size + padding) * 3.0f, size, ImGuizmo::OPERATION::SCALE);
+    //drawGizmoSelection((ImTextureID)scaleButtonSet, (size + padding) * 4.0f, size, ImGuizmo::OPERATION::BOUNDS);
 }
 
 void Editor::createSceneHierarchy() {
@@ -510,7 +578,7 @@ void Editor::createPropertiesPanel() {
                             }
                             */
                             if (extension == ".png" || extension == ".jpg" || extension == ".jpeg") {
-                                meshComponent.setTexture(lv::MeshComponent::loadTextureFromFile(itemPath.c_str()), i);
+                                meshComponent.setTexture(lv::MeshComponent::loadTextureFromFile(0, itemPath.c_str()), i);
 #ifdef LV_BACKEND_VULKAN
                                 meshComponent.destroyDescriptorSet();
                                 meshComponent.initDescriptorSet();
@@ -657,6 +725,12 @@ void Editor::createPropertiesPanel() {
                 }
                 */
 
+                if (selectedEntity.hasComponent<lv::RigidBodyComponent>()) {
+                    if (ImGui::Button("Edit bounds")) {
+                        gizmosType = ImGuizmo::OPERATION::BOUNDS;
+                    }
+                }
+
                 if (ImGui::Button("Remove component")) {
                     if (g_game->scene().state == SCENE_STATE_RUNTIME)
                         boxColliderComponent.destroy();
@@ -674,12 +748,15 @@ void Editor::createPropertiesPanel() {
 
                 ImGui::DragFloat3("Origin", (float*)&rigidBodyComponent.origin, 0.001f, 0.0f);
 
-                ImGui::SliderFloat("Mass", &rigidBodyComponent.mass, 0.0f, 1000.0f);
-                if (rigidBodyComponent.rigidBody != nullptr)
-                    rigidBodyComponent.setMass();
-                //TODO: set other properties
-
-                ImGui::Checkbox("Sync transform", &rigidBodyComponent.syncTransform);
+                ImGui::SliderFloat("Mass", &rigidBodyComponent.mass, 0.0f, 10.0f);
+                //if (rigidBodyComponent.rigidBody != nullptr)
+                //    rigidBodyComponent.setMass();
+                ImGui::SliderFloat("Restitution", &rigidBodyComponent.restitution, 0.0f, 10.0f);
+                //if (rigidBodyComponent.rigidBody != nullptr)
+                //    rigidBodyComponent.rigidBody->setRestitution(rigidBodyComponent.restitution);
+                ImGui::SliderFloat("Friction", &rigidBodyComponent.friction, 0.0f, 10.0f);
+                //if (rigidBodyComponent.rigidBody != nullptr)
+                //    rigidBodyComponent.rigidBody->setFriction(rigidBodyComponent.friction);
 
                 /*
                 if (selectedEntity.hasComponent<lv::MeshComponent>()) {
@@ -778,15 +855,15 @@ void Editor::createPropertiesPanel() {
 void Editor::createAssetsPanel() {
     ImGui::Begin("Assets panel");
 
-    ImGui::Text("%s", currentBrowseDir.c_str());
-
     //Back button
     if (currentBrowseDir != g_game->assetPath) {
-        ImGui::SameLine();
         if (ImGui::Button("<")) {
             currentBrowseDir = currentBrowseDir.substr(0, currentBrowseDir.find_last_of("/"));
         }
+        ImGui::SameLine();
     }
+
+    ImGui::Text("%s", currentBrowseDir.c_str());
 
     //Getting the column count
     float cellSize = 64.0f + 8.0f;
@@ -836,37 +913,62 @@ void Editor::createAssetsPanel() {
     ImGui::End();
 }
 
+void Editor::createGraphicsPanel() {
+    ImGui::Begin("Graphics");
+
+    //Ambient occlusion
+    if (ImGui::BeginCombo("##ao", Scene::aoTypeStr[g_game->scene().graphicsSettings.aoType].c_str())) {
+        for (uint8_t i = 0; i < AMBIENT_OCCLUSION_TYPE_COUNT; i++) {
+            bool isSelected = (g_game->scene().graphicsSettings.aoType == i);
+            if (ImGui::Selectable(Scene::aoTypeStr[i].c_str(), isSelected)) {
+                g_game->scene().graphicsSettings.prevAoType = g_game->scene().graphicsSettings.aoType;
+                g_game->scene().graphicsSettings.aoType = (AmbientOcclusionType)i;
+            }
+            if (isSelected)
+                ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+
+    ImGui::End();
+}
+
 //Static functions
 void Editor::setupTheme() {
     auto& colors = ImGui::GetStyle().Colors;
     colors[ImGuiCol_WindowBg] = ImVec4{ 0.05f, 0.053f, 0.06f, 1.0f };
 
-    // Headers
+    //Headers
     colors[ImGuiCol_Header] = ImVec4{ 0.1f, 0.102f, 0.1f, 1.0f };
     colors[ImGuiCol_HeaderHovered] = ImVec4{ 0.15f, 0.152f, 0.16f, 1.0f };
     colors[ImGuiCol_HeaderActive] = ImVec4{ 0.07f, 0.075f, 0.076f, 1.0f };
     
-    // Buttons
+    //Buttons
     colors[ImGuiCol_Button] = ImVec4{ 0.1f, 0.102f, 0.1f, 1.0f };
     colors[ImGuiCol_ButtonHovered] = ImVec4{ 0.15f, 0.152f, 0.16f, 1.0f };
     colors[ImGuiCol_ButtonActive] = ImVec4{ 0.07f, 0.075f, 0.076f, 1.0f };
 
-    // Frame BG
+    //Frame
     colors[ImGuiCol_FrameBg] = ImVec4{ 0.1f, 0.102f, 0.1f, 1.0f };
     colors[ImGuiCol_FrameBgHovered] = ImVec4{ 0.15f, 0.152f, 0.16f, 1.0f };
     colors[ImGuiCol_FrameBgActive] = ImVec4{ 0.07f, 0.075f, 0.076f, 1.0f };
 
-    // Tabs
+    //Tabs
     colors[ImGuiCol_Tab] = ImVec4{ 0.07f, 0.075f, 0.076f, 1.0f };
     colors[ImGuiCol_TabHovered] = ImVec4{ 0.19f, 0.191f, 0.1905f, 1.0f };
     colors[ImGuiCol_TabActive] = ImVec4{ 0.14f, 0.141f, 0.1405f, 1.0f };
     colors[ImGuiCol_TabUnfocused] = ImVec4{ 0.07f, 0.075f, 0.076f, 1.0f };
     colors[ImGuiCol_TabUnfocusedActive] = ImVec4{ 0.1f, 0.102f, 0.1f, 1.0f };
 
-    // Title
+    //Title
     colors[ImGuiCol_TitleBg] = ImVec4{ 0.07f, 0.075f, 0.076f, 1.0f };
     colors[ImGuiCol_TitleBgActive] = ImVec4{ 0.07f, 0.075f, 0.076f, 1.0f };
     colors[ImGuiCol_TitleBgCollapsed] = ImVec4{ 0.07f, 0.075f, 0.076f, 1.0f };
+
+    //Headers
+    //colors[ImGuiCol_Header] = ImVec4{ 0.07f, 0.075f, 0.076f, 1.0f };
+    //colors[ImGuiCol_HeaderHovered] = ImVec4{ 0.5f, 0.5f, 0.5f, 1.0f };
+    //colors[ImGuiCol_HeaderActive] = ImVec4{ 0.07f, 0.075f, 0.076f, 1.0f };
 }
 
 #ifdef LV_BACKEND_VULKAN

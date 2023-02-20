@@ -51,7 +51,13 @@ struct VP
     float4x4 invViewProj;
 };
 
-constant spvUnsafeArray<float3, 64> _464 = spvUnsafeArray<float3, 64>({ float3(-0.0622651018202304840087890625, -0.05167829990386962890625, 0.0374449007213115692138671875), float3(0.0302175991237163543701171875, -0.0200379006564617156982421875, 0.01662690006196498870849609375), float3(-0.0390986017882823944091796875, 0.0401570983231067657470703125, 0.007383559830486774444580078125), float3(0.009839450009167194366455078125, 0.037042200565338134765625, 0.0354139991104602813720703125), float3(0.052320800721645355224609375, 0.068775497376918792724609375, 0.0504414997994899749755859375), float3(-0.028015099465847015380859375, -0.010210500098764896392822265625, 0.06209909915924072265625), float3(0.060226701200008392333984375, 0.0692259967327117919921875, 0.01235279999673366546630859375), float3(0.02859270013868808746337890625, -0.014475700445473194122314453125, 0.0328993014991283416748046875), float3(-0.06259019672870635986328125, 0.00486651994287967681884765625, 0.064606897532939910888671875), float3(0.0058893398381769657135009765625, 0.001378530054353177547454833984375, 0.00922296009957790374755859375), float3(0.034584499895572662353515625, -0.02139819972217082977294921875, 0.094694197177886962890625), float3(-0.0006720679812133312225341796875, 0.0240708999335765838623046875, 0.0031610499136149883270263671875), float3(-0.01666470058262348175048828125, 0.01690440066158771514892578125, 0.00253134989179670810699462890625), float3(0.01270630024373531341552734375, 0.008617189712822437286376953125, 0.0402492992579936981201171875), float3(-0.01859479956328868865966796875, -0.026761300861835479736328125, 0.13817499577999114990234375), float3(0.00785665027797222137451171875, -0.0342657007277011871337890625, 0.0356098003685474395751953125), float3(-0.00279815006069839000701904296875, -0.026817500591278076171875, 0.0040752398781478404998779296875), float3(-0.008393459953367710113525390625, -0.066703498363494873046875, 0.0363405011594295501708984375), float3(0.0045841899700462818145751953125, 0.0101012997329235076904296875, 0.00270968000404536724090576171875), float3(0.0271658003330230712890625, -0.00899945013225078582763671875, 0.00779215991497039794921875), float3(0.111280001699924468994140625, 0.119108997285366058349609375, 0.013779900036752223968505859375), float3(0.0379422008991241455078125, 0.053585000336170196533203125, 0.095288597047328948974609375), float3(-0.073107503354549407958984375, -0.051304601132869720458984375, 0.083656497299671173095703125), float3(0.0495464988052845001220703125, -0.028514899313449859619140625, 0.012363200075924396514892578125), float3(-0.028116799890995025634765625, -0.10963000357151031494140625, 0.0879172980785369873046875), float3(-0.16427199542522430419921875, -0.15279899537563323974609375, 0.01946569979190826416015625), float3(0.013870500028133392333984375, -0.15612499415874481201171875, 0.093862496316432952880859375), float3(-0.0235613994300365447998046875, -0.0525997988879680633544921875, 0.005530389957129955291748046875), float3(-0.15712200105190277099609375, 0.03822679817676544189453125, 0.03075109981000423431396484375), float3(-0.15470699965953826904296875, 0.09286390244960784912109375, 0.057226099073886871337890625), float3(-0.173391997814178466796875, -0.12337599694728851318359375, 0.069154202938079833984375), float3(-0.056388698518276214599609375, 0.17183999717235565185546875, 0.149004995822906494140625), float3(0.0678440034389495849609375, -0.06374169886112213134765625, 0.14591300487518310546875), float3(0.1403940021991729736328125, -0.17646099627017974853515625, 0.146531999111175537109375), float3(0.17502899467945098876953125, 0.15959300100803375244140625, 0.1515789926052093505859375), float3(0.0270447991788387298583984375, -0.18411900103092193603515625, 0.02869500033557415008544921875), float3(0.12571899592876434326171875, -0.098348796367645263671875, 0.144692003726959228515625), float3(0.075289897620677947998046875, 0.0009050010121427476406097412109375, 0.0988444983959197998046875), float3(0.208784997463226318359375, 0.343313992023468017578125, 0.0226371996104717254638671875), float3(-0.087763600051403045654296875, -0.0162506997585296630859375, 0.0969600975513458251953125), float3(0.2435790002346038818359375, -0.2589519917964935302734375, 0.0688579976558685302734375), float3(-0.0026463200338184833526611328125, 0.020114600658416748046875, 0.012759500183165073394775390625), float3(0.0341592989861965179443359375, -0.02601850032806396484375, 0.027611799538135528564453125), float3(0.258152008056640625, 0.02000240050256252288818359375, 0.05138219892978668212890625), float3(0.1284399926662445068359375, -0.06514610350131988525390625, 0.084316797554492950439453125), float3(0.1564610004425048828125, 0.3607060015201568603515625, 0.076668597757816314697265625), float3(-0.0081276595592498779296875, 0.0267197005450725555419921875, 0.001007360056973993778228759765625), float3(0.02164239995181560516357421875, 0.0041351201944053173065185546875, 0.02798409946262836456298828125), float3(-0.4782139956951141357421875, 0.345468997955322265625, 0.066038496792316436767578125), float3(-0.0930429995059967041015625, -0.13237600028514862060546875, 0.19711999595165252685546875), float3(0.2851119935512542724609375, 0.093766503036022186279296875, 0.3872539997100830078125), float3(-0.012383299879729747772216796875, 0.01650290004909038543701171875, 0.01322109997272491455078125), float3(0.0215764008462429046630859375, 0.4191969931125640869140625, 0.4661079943180084228515625), float3(0.2266699969768524169921875, -0.302599012851715087890625, 0.14933000504970550537109375), float3(-0.1917819976806640625, -0.1012080013751983642578125, 0.1959500014781951904296875), float3(-0.1096419990062713623046875, -0.01564319990575313568115234375, 0.085868097841739654541015625), float3(0.0490018017590045928955078125, -0.255870997905731201171875, 0.40524399280548095703125), float3(0.074717998504638671875, -0.07107619941234588623046875, 0.050888799130916595458984375), float3(-0.21660499274730682373046875, 0.22252799570560455322265625, 0.596920013427734375), float3(-0.19387100636959075927734375, -0.3374330103397369384765625, 0.12161900103092193603515625), float3(-0.51797497272491455078125, -0.634931981563568115234375, 0.3360640108585357666015625), float3(-0.2917819917201995849609375, 0.2881959974765777587890625, 0.66057598590850830078125), float3(-0.008852739818394184112548828125, -0.17962799966335296630859375, 0.0218339003622531890869140625), float3(0.1612530052661895751953125, -0.3839839994907379150390625, 0.0959742963314056396484375) });
+constant int aoType_tmp [[function_constant(0)]];
+constant int aoType = is_function_constant_defined(aoType_tmp) ? aoType_tmp : 0;
+constant bool _672 = (aoType == 0);
+constant bool _678 = (aoType == 1);
+constant bool _683 = (aoType == 2);
+
+constant spvUnsafeArray<float3, 24> _297 = spvUnsafeArray<float3, 24>({ float3(-0.0622651018202304840087890625, -0.05167829990386962890625, 0.0374449007213115692138671875), float3(0.0306225009262561798095703125, -0.0203063003718852996826171875, 0.0168497003614902496337890625), float3(-0.0411803983151912689208984375, 0.0422951988875865936279296875, 0.0077766901813447475433349609375), float3(0.01100550033152103424072265625, 0.0414319001138210296630859375, 0.03961069881916046142578125), float3(0.063179798424243927001953125, 0.08304969966411590576171875, 0.060910500586032867431640625), float3(-0.0369299016892910003662109375, -0.013459700159728527069091796875, 0.08185990154743194580078125), float3(0.087206102907657623291015625, 0.10023699700832366943359375, 0.0178864002227783203125), float3(0.0455770008265972137451171875, -0.0230742990970611572265625, 0.0524416007101535797119140625), float3(-0.109747000038623809814453125, 0.00853306986391544342041015625, 0.113283000886440277099609375), float3(0.011327099986374378204345703125, 0.0026513501070439815521240234375, 0.01773869991302490234375), float3(0.07265789806842803955078125, -0.04495500028133392333984375, 0.19894100725650787353515625), float3(-0.001534670009277760982513427734375, 0.054966099560260772705078125, 0.0072182901203632354736328125), float3(-0.0411426015198230743408203125, 0.0417341999709606170654296875, 0.0062495102174580097198486328125), float3(0.0337328016757965087890625, 0.0228768996894359588623046875, 0.106853999197483062744140625), float3(-0.0528015010058879852294921875, -0.075990997254848480224609375, 0.3923600018024444580078125), float3(0.02374069951474666595458984375, -0.1035420000553131103515625, 0.10760299861431121826171875), float3(-0.00895407982170581817626953125, -0.08581610023975372314453125, 0.0130407996475696563720703125), float3(-0.0283148996531963348388671875, -0.22502100467681884765625, 0.12259300053119659423828125), float3(0.01623429916799068450927734375, 0.0357724018394947052001953125, 0.0095959603786468505859375), float3(0.100599996745586395263671875, -0.0333268009126186370849609375, 0.02885589934885501861572265625), float3(0.42938899993896484375, 0.4595960080623626708984375, 0.0531716011464595794677734375), float3(0.1520510017871856689453125, 0.2147389948368072509765625, 0.38186299800872802734375), float3(-0.3033629953861236572265625, -0.21289099752902984619140625, 0.3471370041370391845703125), float3(0.21230499446392059326171875, -0.122184999287128448486328125, 0.052975900471210479736328125) });
 
 struct main0_out
 {
@@ -68,56 +74,155 @@ float3 reconstructPosFromDepth(thread const float4x4& invViewProj, thread const 
 {
     float3 posInViewProj = float3((texCoord.x * 2.0) - 1.0, ((1.0 - texCoord.y) * 2.0) - 1.0, depth);
     float4 position = invViewProj * float4(posInViewProj, 1.0);
-    float _49 = position.w;
-    float4 _50 = position;
-    float3 _53 = _50.xyz / float3(_49);
-    position.x = _53.x;
-    position.y = _53.y;
-    position.z = _53.z;
+    float _65 = position.w;
+    float4 _66 = position;
+    float3 _69 = _66.xyz / float3(_65);
+    position.x = _69.x;
+    position.y = _69.y;
+    position.z = _69.z;
     return position.xyz;
 }
 
-fragment main0_out main0(main0_in in [[stage_in]], constant VP& u_vp [[buffer(0)]], texture2d<float> u_depth [[texture(0)]], texture2d<float> u_normalRoughness [[texture(1)]], texture2d<float> u_ssaoNoise [[texture(2)]], sampler u_depthSmplr [[sampler(0)]], sampler u_normalRoughnessSmplr [[sampler(1)]], sampler u_ssaoNoiseSmplr [[sampler(2)]])
+static inline __attribute__((always_inline))
+float ssao(texture2d<float> u_depth, sampler u_depthSmplr, thread float2& inTexCoord, constant VP& u_vp, texture2d<float> u_normalRoughness, sampler u_normalRoughnessSmplr, texture2d<float> u_ssaoNoise, sampler u_ssaoNoiseSmplr)
 {
-    main0_out out = {};
-    float depth = u_depth.sample(u_depthSmplr, in.inTexCoord).x;
+    float depth = u_depth.sample(u_depthSmplr, inTexCoord).x;
     float4x4 param = u_vp.invViewProj;
-    float2 param_1 = in.inTexCoord;
+    float2 param_1 = inTexCoord;
     float param_2 = depth;
-    float3 fragPos = (u_vp.view * float4(reconstructPosFromDepth(param, param_1, param_2), 1.0)).xyz;
-    float viewZ = fragPos.z;
-    float3 normal = fast::normalize(((u_vp.view * float4(u_normalRoughness.sample(u_normalRoughnessSmplr, in.inTexCoord).xyz, 1.0)).xyz * 2.0) - float3(1.0));
+    float3 fragPos = reconstructPosFromDepth(param, param_1, param_2);
+    float3 normal = fast::normalize((u_normalRoughness.sample(u_normalRoughnessSmplr, inTexCoord).xyz * 2.0) - float3(1.0));
     int2 texDim = int2(u_depth.get_width(), u_depth.get_height());
     int2 noiseDim = int2(u_ssaoNoise.get_width(), u_ssaoNoise.get_height());
-    float2 noiseUV = float2(float(texDim.x) / float(noiseDim.x), float(texDim.y) / float(noiseDim.y)) * in.inTexCoord;
-    float3 randomVec = (u_ssaoNoise.sample(u_ssaoNoiseSmplr, noiseUV).xyz * 2.0) - float3(1.0);
+    float2 noiseUV = float2(float(texDim.x) / float(noiseDim.x), float(texDim.y) / float(noiseDim.y)) * inTexCoord;
+    float3 randomVec = u_ssaoNoise.sample(u_ssaoNoiseSmplr, noiseUV).xyz;
     float3 tangent = fast::normalize(randomVec - (normal * dot(randomVec, normal)));
     float3 bitangent = cross(tangent, normal);
     float3x3 TBN = float3x3(float3(tangent), float3(bitangent), float3(normal));
     float occlusion = 0.0;
     for (int i = 0; i < 24; i++)
     {
-        float3 samplePos = TBN * _464[i];
-        samplePos = fragPos + (samplePos * 0.4000000059604644775390625);
-        float4 offset = u_vp.projection * float4(samplePos, 1.0);
-        float _486 = offset.w;
-        float4 _487 = offset;
-        float2 _490 = _487.xy / float2(_486);
-        offset.x = _490.x;
-        offset.y = _490.y;
-        float4 _495 = offset;
-        float2 _500 = (_495.xy * 0.5) + float2(0.5);
-        offset.x = _500.x;
-        offset.y = _500.y;
+        float3 samplePos = TBN * _297[i];
+        samplePos = fragPos + (samplePos * 0.800000011920928955078125);
+        float4 viewSamplePos = u_vp.view * float4(samplePos, 1.0);
+        float4 offset = u_vp.projection * viewSamplePos;
+        float _325 = offset.w;
+        float4 _326 = offset;
+        float2 _329 = _326.xy / float2(_325);
+        offset.x = _329.x;
+        offset.y = _329.y;
+        float4 _334 = offset;
+        float2 _339 = (_334.xy * 0.5) + float2(0.5);
+        offset.x = _339.x;
+        offset.y = _339.y;
         float sampleDepth = u_depth.sample(u_depthSmplr, float2(offset.x, 1.0 - offset.y)).x;
         float4x4 param_3 = u_vp.invViewProj;
         float2 param_4 = float2(offset.x, 1.0 - offset.y);
         float param_5 = sampleDepth;
-        float sampleViewZ = (u_vp.view * float4(reconstructPosFromDepth(param_3, param_4, param_5), 1.0)).z;
-        float rangeCheck = smoothstep(0.0, 1.0, 0.0199999995529651641845703125 / abs(depth - sampleDepth));
-        occlusion += ((viewZ <= (sampleViewZ - 0.039999999105930328369140625)) ? rangeCheck : 0.0);
+        float sampleLinearDepth = (u_vp.view * float4(reconstructPosFromDepth(param_3, param_4, param_5), 1.0)).z;
+        float rangeCheck = smoothstep(0.0, 1.0, 0.800000011920928955078125 / abs(sampleLinearDepth - viewSamplePos.z));
+        occlusion += ((viewSamplePos.z <= (sampleLinearDepth - 0.039999999105930328369140625)) ? rangeCheck : 0.0);
     }
-    out.FragColor = 1.0 - (occlusion / 24.0);
+    return 1.0 - (occlusion / 24.0);
+}
+
+static inline __attribute__((always_inline))
+float length2(thread const float3& a)
+{
+    return ((a.x * a.x) + (a.y * a.y)) + (a.z * a.z);
+}
+
+static inline __attribute__((always_inline))
+float computeAO(thread const float3& normal, thread const float2& direction, thread const float2& texelSize, thread const float3& fragPos, texture2d<float> u_depth, sampler u_depthSmplr, thread float2& inTexCoord, constant VP& u_vp)
+{
+    float3 viewVector = fast::normalize(fragPos);
+    float3 leftDirection = cross(viewVector, float3(direction, 0.0));
+    float3 tangent = cross(normal, leftDirection);
+    float tangentAngle = atan(tangent.z / length(tangent.xy));
+    float sinTangentAngle = sin(tangentAngle + 0.087266445159912109375);
+    float horizonAngle = tangentAngle + 0.087266445159912109375;
+    float3 horizonVector;
+    for (int i = 2; i < 10; i++)
+    {
+        float2 marchPosition = inTexCoord + (((texelSize * float(i)) * direction) * 8.0);
+        float depth = u_depth.sample(u_depthSmplr, float2(marchPosition.x, marchPosition.y)).x;
+        float4x4 param = u_vp.invViewProj;
+        float2 param_1 = marchPosition;
+        float param_2 = depth;
+        float3 fragPosMarch = (u_vp.view * float4(reconstructPosFromDepth(param, param_1, param_2), 1.0)).xyz;
+        float3 crntVector = fragPosMarch - fragPos;
+        float3 param_3 = crntVector;
+        if (length2(param_3) < 16.0)
+        {
+            horizonAngle = fast::max(horizonAngle, atan(crntVector.z / length(crntVector.xy)));
+            horizonVector = crntVector;
+        }
+    }
+    float sinHorizonAngle = sin(horizonAngle);
+    float norm = length(horizonVector) / 4.0;
+    float attenuation = 1.0 - (norm * norm);
+    return attenuation * (sinHorizonAngle - sinTangentAngle);
+}
+
+static inline __attribute__((always_inline))
+float hbao(texture2d<float> u_depth, sampler u_depthSmplr, thread float2& inTexCoord, constant VP& u_vp, texture2d<float> u_normalRoughness, sampler u_normalRoughnessSmplr, texture2d<float> u_ssaoNoise, sampler u_ssaoNoiseSmplr)
+{
+    float2 screenSize = float2(int2(u_depth.get_width(), u_depth.get_height()));
+    float2 noiseScale = float2(screenSize.x / 8.0, screenSize.y / 8.0);
+    float2 noisePos = inTexCoord * noiseScale;
+    float depth = u_depth.sample(u_depthSmplr, inTexCoord).x;
+    float4x4 param = u_vp.invViewProj;
+    float2 param_1 = inTexCoord;
+    float param_2 = depth;
+    float3 fragPos = (u_vp.view * float4(reconstructPosFromDepth(param, param_1, param_2), 1.0)).xyz;
+    float3 normal = fast::normalize((u_vp.view * float4(u_normalRoughness.sample(u_normalRoughnessSmplr, inTexCoord).xyz, 1.0)).xyz);
+    float2 randomVec = u_ssaoNoise.sample(u_ssaoNoiseSmplr, noisePos).xy;
+    float2 texelSize = float2(1.0) / screenSize;
+    float rez = 0.0;
+    float3 param_3 = normal;
+    float2 param_4 = float2(randomVec);
+    float2 param_5 = texelSize;
+    float3 param_6 = fragPos;
+    rez += computeAO(param_3, param_4, param_5, param_6, u_depth, u_depthSmplr, inTexCoord, u_vp);
+    float3 param_7 = normal;
+    float2 param_8 = -float2(randomVec);
+    float2 param_9 = texelSize;
+    float3 param_10 = fragPos;
+    rez += computeAO(param_7, param_8, param_9, param_10, u_depth, u_depthSmplr, inTexCoord, u_vp);
+    float3 param_11 = normal;
+    float2 param_12 = float2(-randomVec.y, -randomVec.x);
+    float2 param_13 = texelSize;
+    float3 param_14 = fragPos;
+    rez += computeAO(param_11, param_12, param_13, param_14, u_depth, u_depthSmplr, inTexCoord, u_vp);
+    float3 param_15 = normal;
+    float2 param_16 = float2(randomVec.y, randomVec.x);
+    float2 param_17 = texelSize;
+    float3 param_18 = fragPos;
+    rez += computeAO(param_15, param_16, param_17, param_18, u_depth, u_depthSmplr, inTexCoord, u_vp);
+    return 1.0 - (rez * 0.25);
+}
+
+fragment main0_out main0(main0_in in [[stage_in]], constant VP& u_vp [[buffer(0)]], texture2d<float> u_depth [[texture(0)]], texture2d<float> u_normalRoughness [[texture(1)]], texture2d<float> u_ssaoNoise [[texture(2)]], sampler u_depthSmplr [[sampler(0)]], sampler u_normalRoughnessSmplr [[sampler(1)]], sampler u_ssaoNoiseSmplr [[sampler(2)]])
+{
+    main0_out out = {};
+    if (_672)
+    {
+        out.FragColor = 1.0;
+    }
+    else
+    {
+        if (_678)
+        {
+            out.FragColor = ssao(u_depth, u_depthSmplr, in.inTexCoord, u_vp, u_normalRoughness, u_normalRoughnessSmplr, u_ssaoNoise, u_ssaoNoiseSmplr);
+        }
+        else
+        {
+            if (_683)
+            {
+                out.FragColor = hbao(u_depth, u_depthSmplr, in.inTexCoord, u_vp, u_normalRoughness, u_normalRoughnessSmplr, u_ssaoNoise, u_ssaoNoiseSmplr);
+            }
+        }
+    }
     return out;
 }
 

@@ -5,7 +5,7 @@ layout (location = 0) out vec4 FragColor;
 layout (location = 0) in vec2 inTexCoord;
 
 layout (set = 0, binding = 0) uniform sampler2D u_colorTex;
-layout (set = 0, binding = 1) uniform sampler2D u_depthTex;
+layout (set = 0, binding = 1) uniform sampler2D u_bloomTex;
 /*
 layout (set = 0, binding = 1) uniform sampler2D u_depth;
 layout (set = 0, binding = 2) uniform sampler2D u_normalRoughness;
@@ -165,6 +165,7 @@ void main() {
     //vec3 hdrColor;
     //if (inTexCoord.x < 0.5)
     vec3 hdrColor = fxaa(inTexCoord * vec2(1920, 1080), vec2(1920, 1080));//texture(u_colorTex, inTexCoord).rgb;
+    hdrColor = mix(hdrColor, texture(u_bloomTex, inTexCoord).rgb, 0.04);
     //else
     //    hdrColor = texture(u_colorTex, inTexCoord).rgb;
     vec3 mapped = vec3(1.0) - exp(-hdrColor * exposure);

@@ -6,7 +6,6 @@ using namespace metal;
 struct VP
 {
     float4x4 viewProj;
-    int layerIndex;
 };
 
 struct MODEL
@@ -17,7 +16,6 @@ struct MODEL
 struct main0_out
 {
     float4 gl_Position [[position]];
-    uint gl_Layer [[render_target_array_index]];
 };
 
 struct main0_in
@@ -29,7 +27,6 @@ vertex main0_out main0(main0_in in [[stage_in]], constant VP& u_vp [[buffer(0)]]
 {
     main0_out out = {};
     out.gl_Position = (u_vp.viewProj * u_model.model) * float4(in.aPosition, 1.0);
-    out.gl_Layer = uint(u_vp.layerIndex);
     return out;
 }
 

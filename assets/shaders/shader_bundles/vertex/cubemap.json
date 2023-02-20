@@ -1,0 +1,15 @@
+{
+    "descriptorSets": {
+        "0": {
+            "bindings": {
+                "0": {
+                    "bufferBinding": 0,
+                    "descriptorType": "uniformBuffer"
+                }
+            },
+            "maxBinding": "0"
+        }
+    },
+    "maxSet": "0",
+    "stage": "unknown"
+}

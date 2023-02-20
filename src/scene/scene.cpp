@@ -14,6 +14,18 @@
 
 #include "../editor/editor.hpp"
 
+std::string Scene::aoTypeStr[AMBIENT_OCCLUSION_TYPE_COUNT] = {
+    "None", "SSAO", "HBAO"
+};
+
+lv::ColliderComponent* getEntityColliderComponent(lv::Entity& entity) {
+    lv::ColliderComponent* colliderComponent = nullptr;
+    if (entity.hasComponent<lv::SphereColliderComponent>()) colliderComponent = &entity.getComponent<lv::SphereColliderComponent>();
+    if (entity.hasComponent<lv::BoxColliderComponent>()) colliderComponent = &entity.getComponent<lv::BoxColliderComponent>();
+
+    return colliderComponent;
+}
+
 unsigned int Scene::meshDataFilenameIndex = 0;
 std::string Scene::meshDataDir = "";
 
@@ -115,19 +127,14 @@ void Scene::loadFromFile() {
 }
 
 void Scene::loadEntity(entt::entity entity, nh::json& savedEntity) {
-    //std::cout << "Test 1 passed" << std::endl;
     editorRegistry.get<lv::TagComponent>(entity).name = savedEntity["name"];
-    //std::cout << "Test 1.1 passed" << std::endl;
     //std::cout << entityName << std::endl;
     for (auto& element : savedEntity.items()) {
         std::string componentName = element.key();
-        //std::cout << "Test 2 passed" << std::endl;
         //Transform component
         if (componentName == TRANSFORM_COMPONENT_NAME) {
-            //std::cout << "Test 3 passed" << std::endl;
             auto& transformComponent = editorRegistry.emplace<lv::TransformComponent>(entity);
             auto& component = savedEntity[TRANSFORM_COMPONENT_NAME];
-            //std::cout << "Test 4 passed" << std::endl;
             
             transformComponent.position.x = component["position"]["x"];
             transformComponent.position.y = component["position"]["y"];
@@ -215,7 +222,7 @@ void Scene::loadEntity(entt::entity entity, nh::json& savedEntity) {
             std::thread* thread = new std::thread([&](){
                 std::string vertDataFilename = component["vertDataFilename"];
                 std::string indDataFilename = component["indDataFilename"];
-                meshComponent.loadFromFile(vertDataFilename.c_str(), indDataFilename.c_str());
+                meshComponent.loadFromFile(0, vertDataFilename.c_str(), indDataFilename.c_str());
             });
             thread->join(); //TODO: make this multithreaded
 
@@ -224,7 +231,7 @@ void Scene::loadEntity(entt::entity entity, nh::json& savedEntity) {
                 if (component["textures"].contains(texIndexStr)) {
                     std::string filename = component["textures"][texIndexStr]["filename"];
                     //std::cout << filename << std::endl;
-                    lv::Texture* texture = lv::MeshComponent::loadTextureFromFile(filename.c_str());
+                    lv::Texture* texture = lv::MeshComponent::loadTextureFromFile(0, filename.c_str(), (texIndex == 0 ? LV_FORMAT_R8G8B8A8_UNORM_SRGB : LV_FORMAT_R8G8B8A8_UNORM));
                     meshComponent.setTexture(texture, texIndex);
                 }
             }
@@ -296,10 +303,13 @@ void Scene::loadEntity(entt::entity entity, nh::json& savedEntity) {
             lv::RigidBodyComponent& rigidBodyComponent = editorRegistry.emplace<lv::RigidBodyComponent>(entity, physicsWorld);
             auto& component = savedEntity[RIGID_BODY_COMPONENT_NAME];
 
+            rigidBodyComponent.origin.x = component["origin"]["x"];
+            rigidBodyComponent.origin.y = component["origin"]["y"];
+            rigidBodyComponent.origin.z = component["origin"]["z"];
+
             rigidBodyComponent.mass = component["mass"];
             rigidBodyComponent.restitution = component["restitution"];
             rigidBodyComponent.friction = component["friction"];
-            rigidBodyComponent.syncTransform = component["syncTransform"];
         }
 
         //Loading child entities
@@ -476,10 +486,13 @@ void Scene::saveEntity(entt::entity entity, nh::json& savedEntity) {
         lv::RigidBodyComponent& rigidBodyComponent = editorRegistry.get<lv::RigidBodyComponent>(entity);
         auto& component = savedEntity[RIGID_BODY_COMPONENT_NAME];
 
+        component["origin"]["x"] = rigidBodyComponent.origin.x;
+        component["origin"]["y"] = rigidBodyComponent.origin.y;
+        component["origin"]["z"] = rigidBodyComponent.origin.z;
+
         component["mass"] = rigidBodyComponent.mass;
         component["restitution"] = rigidBodyComponent.restitution;
         component["friction"] = rigidBodyComponent.friction;
-        component["syncTransform"] = rigidBodyComponent.syncTransform;
     }
 
     //Saving child entities
@@ -640,36 +653,50 @@ void Scene::update(float dt) {
         auto view2 = runtimeRegistry.view<lv::RigidBodyComponent, lv::TransformComponent>();
         for (auto& entity : view2) {
             lv::RigidBodyComponent& rigidBodyComponent = runtimeRegistry.get<lv::RigidBodyComponent>(entity);
-            if (rigidBodyComponent.syncTransform) {
-                if (runtimeRegistry.any_of<lv::SphereColliderComponent, lv::BoxColliderComponent>(entity)) {
-                    lv::TransformComponent& transformComponent = runtimeRegistry.get<lv::TransformComponent>(entity);
+            //lv::Entity entityClass(entity, registry)
+            //lv::ColliderComponent* colliderComponent = getEntityColliderComponent(entityClass);
+            if (runtimeRegistry.any_of<lv::SphereColliderComponent, lv::BoxColliderComponent>(entity)) {
+                lv::TransformComponent& transformComponent = runtimeRegistry.get<lv::TransformComponent>(entity);
 
-                    btTransform transform;
-                    rigidBodyComponent.motionState->getWorldTransform(transform);
-                    transform.setOrigin(btVector3(transformComponent.position.x, transformComponent.position.y, transformComponent.position.z));
-                    //rigidBodyComponent.setOrigin(transformComponent.position);
-                    rigidBodyComponent.setRotation(transformComponent.rotation);
+                btTransform transform;
+                rigidBodyComponent.setMass();
+                rigidBodyComponent.rigidBody->setRestitution(rigidBodyComponent.restitution);
+                rigidBodyComponent.rigidBody->setFriction(rigidBodyComponent.friction);
+                rigidBodyComponent.motionState->getWorldTransform(transform);
+                //btTransform localTransform = rigidBodyComponent.rigidBody->getCenterOfMassTransform();
+                glm::vec3 globalPos = transformComponent.position;// + rigidBodyComponent.origin;
+                //btVector3 vec = localTransform.getOrigin();
+                //std::cout << vec.x() << ", " << vec.y() << ", " << vec.z() << std::endl;
+                //localTransform.setOrigin(btVector3(localPos.x, localPos.y, localPos.z));
+                //rigidBodyComponent.rigidBody->setCenterOfMassTransform(localTransform);
+                transform.setOrigin(btVector3(globalPos.x, globalPos.y, globalPos.z));
+                //rigidBodyComponent.setOrigin(transformComponent.position);
+                rigidBodyComponent.setRotation(transformComponent.rotation);
+                if (runtimeRegistry.all_of<lv::BoxColliderComponent>(entity)) {
+                    lv::BoxColliderComponent& boxColliderComponent = runtimeRegistry.get<lv::BoxColliderComponent>(entity);
+                    boxColliderComponent.shape->setLocalScaling(btVector3(boxColliderComponent.scale.x, boxColliderComponent.scale.y, boxColliderComponent.scale.z));
                 }
+                //rigidBodyComponent.motionState->setWorldTransform(transform);
             }
         }
 
         //TODO: add option to change how many steps should be made
-        physicsWorld.world->stepSimulation(dt, 1);
+        //std::thread* thread = new std::thread([&](){
+            physicsWorld.world->stepSimulation(dt, 10);
+        //});
 
         for (auto& entity : view2) {
             lv::RigidBodyComponent& rigidBodyComponent = runtimeRegistry.get<lv::RigidBodyComponent>(entity);
-            if (rigidBodyComponent.syncTransform) {
-                if (runtimeRegistry.any_of<lv::SphereColliderComponent, lv::BoxColliderComponent>(entity)) {
-                    lv::TransformComponent& transformComponent = runtimeRegistry.get<lv::TransformComponent>(entity);
+            if (runtimeRegistry.any_of<lv::SphereColliderComponent, lv::BoxColliderComponent>(entity)) {
+                lv::TransformComponent& transformComponent = runtimeRegistry.get<lv::TransformComponent>(entity);
 
-                    btTransform transform;
-                    rigidBodyComponent.motionState->getWorldTransform(transform);
-                    btVector3& position = transform.getOrigin();
-                    //rigidBodyComponent.setOrigin(glm::vec3(0.0f));
-                    transformComponent.position = glm::vec3(position.x(), position.y(), position.z());
-                    //rigidBodyComponent.setRotation(glm::vec3(0.0f));
-                    rigidBodyComponent.getRotation(transformComponent.rotation);
-                }
+                btTransform transform;
+                rigidBodyComponent.motionState->getWorldTransform(transform);
+                btVector3& position = transform.getOrigin();
+                //rigidBodyComponent.setOrigin(glm::vec3(0.0f));
+                transformComponent.position = glm::vec3(position.x(), position.y(), position.z());// - rigidBodyComponent.origin;
+                //rigidBodyComponent.setRotation(glm::vec3(0.0f));
+                rigidBodyComponent.getRotation(transformComponent.rotation);
             }
         }
     }

@@ -12,7 +12,7 @@
 
 #include <ImGuizmo/ImGuizmo.h>
 
-#include "nfd.h"
+#include "nfd.hpp"
 
 #include "lvutils/entity/tag.hpp"
 #include "lvutils/entity/transform.hpp"
@@ -47,6 +47,7 @@ public:
     uint16_t viewportY = 0;
 
     bool viewportActive = false;
+    bool cameraActive = false;
     ViewportType activeViewport = VIEWPORT_TYPE_SCENE;
 
     std::string currentBrowseDir;
@@ -74,24 +75,35 @@ public:
     lv::Texture stopButtonTex;
     lv::Texture folderTex;
     lv::Texture fileTex;
+    lv::Texture translateButtonTex;
+    lv::Texture rotateButtonTex;
+    lv::Texture scaleButtonTex;
 
 #ifdef LV_BACKEND_VULKAN
     VkDescriptorSet playButtonSet;
     VkDescriptorSet stopButtonSet;
     VkDescriptorSet folderSet;
     VkDescriptorSet fileSet;
+    VkDescriptorSet translateButtonSet;
+    VkDescriptorSet rotateButtonSet;
+    VkDescriptorSet scaleButtonSet;
 #elif defined LV_BACKEND_METAL
     MTL::Texture* playButtonSet;
     MTL::Texture* stopButtonSet;
     MTL::Texture* folderSet;
     MTL::Texture* fileSet;
+    MTL::Texture* translateButtonSet;
+    MTL::Texture* rotateButtonSet;
+    MTL::Texture* scaleButtonSet;
 #endif
 
 #ifdef LV_BACKEND_VULKAN
-    Editor(LvndWindow* aWindow, lv::PipelineLayout& aDeferredLayout);
+    Editor(LvndWindow* aWindow, lv::PipelineLayout& aDeferredLayout) : window(aWindow), deferredLayout(aDeferredLayout) {}
 #elif defined LV_BACKEND_METAL
-    Editor(LvndWindow* aWindow);
+    Editor(LvndWindow* aWindow) : window(aWindow) {}
 #endif
+
+    void init();
 
     void resize();
 
@@ -115,6 +127,8 @@ public:
 
     void drawEntity(entt::entity entityI);
 
+    void drawGizmoSelection(ImTextureID imageSet, float x, float size, ImGuizmo::OPERATION aGizmosType);
+
     //ImGui functions
     void beginDockspace();
 
@@ -133,6 +147,8 @@ public:
     void createPropertiesPanel();
 
     void createAssetsPanel();
+
+    void createGraphicsPanel();
 
     //Static functions
     static void setupTheme();

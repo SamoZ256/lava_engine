@@ -64,6 +64,6 @@ void Game::saveToFile() {
     JSON["sceneCount"] = scenes.size();
     JSON["activeScene"] = activeScene;
 
-    std::ofstream out(filename.c_str());
+    std::ofstream out(filename);
     out << std::setw(4) << JSON;
 }
