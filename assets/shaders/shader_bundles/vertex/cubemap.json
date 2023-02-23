@@ -4,7 +4,8 @@
             "bindings": {
                 "0": {
                     "bufferBinding": 0,
-                    "descriptorType": "uniformBuffer"
+                    "descriptorType": "uniformBuffer",
+                    "name": "VP"
                 }
             },
             "maxBinding": "0"

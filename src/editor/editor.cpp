@@ -90,29 +90,25 @@ void Editor::init() {
 #endif
 
     //Textures and descriptor sets
-    playButtonTex.load("assets/textures/play_button.png");
-    playButtonTex.init(0);
-    stopButtonTex.load("assets/textures/stop_button.png");
-    stopButtonTex.init(0);
-    folderTex.load("assets/textures/folder.png");
-    folderTex.init(0);
-    fileTex.load("assets/textures/file.png");
-    fileTex.init(0);
-    translateButtonTex.load("assets/textures/translate_button.png");
-    translateButtonTex.init(0);
-    rotateButtonTex.load("assets/textures/rotate_button.png");
-    rotateButtonTex.init(0);
-    scaleButtonTex.load("assets/textures/scale_button.png");
-    scaleButtonTex.init(0);
+    playButtonTex.init("assets/textures/play_button.png");
+    stopButtonTex.init("assets/textures/stop_button.png");
+    folderTex.init("assets/textures/folder.png");
+    fileTex.init("assets/textures/file.png");
+    translateButtonTex.init("assets/textures/translate_button.png");
+    rotateButtonTex.init("assets/textures/rotate_button.png");
+    scaleButtonTex.init("assets/textures/scale_button.png");
+
+    sampler.filter = LV_FILTER_LINEAR;
+    sampler.init();
 
 #ifdef LV_BACKEND_VULKAN
-    playButtonSet = createDescriptorSet(playButtonTex.imageView.imageViews[0], playButtonTex.sampler.sampler);
-    stopButtonSet = createDescriptorSet(stopButtonTex.imageView.imageViews[0], stopButtonTex.sampler.sampler);
-    folderSet = createDescriptorSet(folderTex.imageView.imageViews[0], folderTex.sampler.sampler);
-    fileSet = createDescriptorSet(fileTex.imageView.imageViews[0], fileTex.sampler.sampler);
-    translateButtonSet = createDescriptorSet(translateButtonTex.imageView.imageViews[0], translateButtonTex.sampler.sampler);
-    rotateButtonSet = createDescriptorSet(rotateButtonTex.imageView.imageViews[0], rotateButtonTex.sampler.sampler);
-    scaleButtonSet = createDescriptorSet(scaleButtonTex.imageView.imageViews[0], scaleButtonTex.sampler.sampler);
+    playButtonSet = createDescriptorSet(playButtonTex.imageView.imageViews[0], sampler.sampler);
+    stopButtonSet = createDescriptorSet(stopButtonTex.imageView.imageViews[0], sampler.sampler);
+    folderSet = createDescriptorSet(folderTex.imageView.imageViews[0], sampler.sampler);
+    fileSet = createDescriptorSet(fileTex.imageView.imageViews[0], sampler.sampler);
+    translateButtonSet = createDescriptorSet(translateButtonTex.imageView.imageViews[0], sampler.sampler);
+    rotateButtonSet = createDescriptorSet(rotateButtonTex.imageView.imageViews[0], sampler.sampler);
+    scaleButtonSet = createDescriptorSet(scaleButtonTex.imageView.imageViews[0], sampler.sampler);
 #elif defined(LV_BACKEND_METAL)
     playButtonSet = playButtonTex.image.images[0];
     stopButtonSet = stopButtonTex.image.images[0];
@@ -788,20 +784,12 @@ void Editor::createPropertiesPanel() {
                 }
                 if (ImGui::MenuItem(MESH_COMPONENT_NAME)) {
                     if (!selectedEntity.hasComponent<lv::MeshComponent>()) {
-                        selectedEntity.addComponent<lv::MeshComponent>(
-#ifdef LV_BACKEND_VULKAN
-                            deferredLayout
-#endif
-                        );
+                        selectedEntity.addComponent<lv::MeshComponent>(deferredLayout);
                     }
                 }
                 if (ImGui::MenuItem(MATERIAL_COMPONENT_NAME)) {
                     if (!selectedEntity.hasComponent<lv::MaterialComponent>()) {
-                        selectedEntity.addComponent<lv::MaterialComponent>(
-#ifdef LV_BACKEND_VULKAN
-                            deferredLayout
-#endif
-                        );
+                        selectedEntity.addComponent<lv::MaterialComponent>(deferredLayout);
                     }
                 }
                 if (ImGui::MenuItem(SCRIPT_COMPONENT_NAME)) {

@@ -3,15 +3,15 @@
 
 using namespace metal;
 
+struct VP
+{
+    float4x4 viewProj;
+};
+
 struct MODEL
 {
     float4x4 model;
     float4x4 normalMatrix;
-};
-
-struct VP
-{
-    float4x4 viewProj;
 };
 
 struct main0_out
@@ -31,12 +31,11 @@ struct main0_in
     float4 aTangent [[attribute(3)]];
 };
 
-vertex main0_out main0(main0_in in [[stage_in]], constant MODEL& u_model [[buffer(0)]], constant VP& u_vp [[buffer(1)]])
+vertex main0_out main0(main0_in in [[stage_in]], constant VP& u_vp [[buffer(0)]], constant MODEL& u_model [[buffer(1)]])
 {
     main0_out out = {};
     float3x3 outTBN = {};
-    float4 gloablPos = u_model.model * float4(in.aPosition, 1.0);
-    out.gl_Position = u_vp.viewProj * gloablPos;
+    out.gl_Position = (u_vp.viewProj * u_model.model) * float4(in.aPosition, 1.0);
     out.outTexCoord = in.aTexCoord;
     float3 T = fast::normalize(float3x3(u_model.normalMatrix[0].xyz, u_model.normalMatrix[1].xyz, u_model.normalMatrix[2].xyz) * in.aTangent.xyz);
     float3 N = fast::normalize(float3x3(u_model.normalMatrix[0].xyz, u_model.normalMatrix[1].xyz, u_model.normalMatrix[2].xyz) * in.aNormal);

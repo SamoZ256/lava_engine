@@ -24,8 +24,7 @@ layout (push_constant) uniform MODEL {
 } u_model;
 
 void main() {
-    vec4 gloablPos = u_model.model * vec4(aPosition, 1.0);
-    gl_Position = u_vp.viewProj * gloablPos;
+    gl_Position = u_vp.viewProj * u_model.model * vec4(aPosition, 1.0);
     //gl_Position.z *= gl_Position.w;
 
     //outPosition = gloablPos.xyz;

@@ -4,7 +4,8 @@
             "bindings": {
                 "0": {
                     "bufferBinding": 0,
-                    "descriptorType": "uniformBuffer"
+                    "descriptorType": "uniformBuffer",
+                    "name": "MATERIAL"
                 }
             },
             "maxBinding": "0"
@@ -13,16 +14,19 @@
             "bindings": {
                 "0": {
                     "descriptorType": "combinedImageSampler",
+                    "name": "u_albedoTexture",
                     "samplerBinding": 2,
                     "textureBinding": 2
                 },
                 "1": {
                     "descriptorType": "combinedImageSampler",
+                    "name": "u_metallicRoughnessTexture",
                     "samplerBinding": 1,
                     "textureBinding": 1
                 },
                 "2": {
                     "descriptorType": "combinedImageSampler",
+                    "name": "u_normalTexture",
                     "samplerBinding": 0,
                     "textureBinding": 0
                 }

@@ -32,8 +32,6 @@ option(BACKEND_METAL "Build using metal backend" OFF)
 set(BACKEND)
 
 if (BACKEND_VULKAN)
-    message("Building using vulkan backend")
-
     set(BACKEND vulkan)
 
     add_compile_definitions(
@@ -41,7 +39,7 @@ if (BACKEND_VULKAN)
     )
 
     include_directories(
-        "external/vma/include"
+        "external/vma"
     )
 elseif (BACKEND_METAL)
     message("Building using metal backend")

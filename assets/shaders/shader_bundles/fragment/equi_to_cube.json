@@ -4,10 +4,12 @@
             "bindings": {
                 "0": {
                     "bufferBinding": 0,
-                    "descriptorType": "uniformBuffer"
+                    "descriptorType": "uniformBuffer",
+                    "name": "VP"
                 },
                 "1": {
                     "descriptorType": "combinedImageSampler",
+                    "name": "hdrMap",
                     "samplerBinding": 0,
                     "textureBinding": 0
                 }

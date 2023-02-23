@@ -10,11 +10,7 @@ void Game::destroy() {
 }
 
 Scene& Game::addScene() {
-#ifdef LV_BACKEND_VULKAN
     scenes.emplace_back(deferredLayout);
-#elif defined LV_BACKEND_METAL
-    scenes.emplace_back();
-#endif
 
     return scenes[scenes.size() - 1];
 }

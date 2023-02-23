@@ -4,10 +4,12 @@
             "bindings": {
                 "0": {
                     "bufferBinding": 0,
-                    "descriptorType": "uniformBuffer"
+                    "descriptorType": "uniformBuffer",
+                    "name": "VP"
                 },
                 "1": {
                     "descriptorType": "combinedImageSampler",
+                    "name": "environmentMap",
                     "samplerBinding": 0,
                     "textureBinding": 0
                 }
@@ -17,7 +19,8 @@
     },
     "maxSet": "0",
     "pushConstant": {
-        "bufferBinding": 1
+        "bufferBinding": 1,
+        "name": "u_roughness"
     },
     "stage": "unknown"
 }

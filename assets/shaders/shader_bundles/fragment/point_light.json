@@ -4,20 +4,24 @@
             "bindings": {
                 "1": {
                     "bufferBinding": 4294967295,
-                    "descriptorType": "uniformBuffer"
+                    "descriptorType": "uniformBuffer",
+                    "name": "VP"
                 },
                 "2": {
                     "descriptorType": "combinedImageSampler",
+                    "name": "u_depth",
                     "samplerBinding": 4294967295,
                     "textureBinding": 4294967295
                 },
                 "3": {
                     "descriptorType": "combinedImageSampler",
+                    "name": "u_normalRoughness",
                     "samplerBinding": 4294967295,
                     "textureBinding": 4294967295
                 },
                 "4": {
                     "descriptorType": "combinedImageSampler",
+                    "name": "u_albedoMetallic",
                     "samplerBinding": 4294967295,
                     "textureBinding": 4294967295
                 }

@@ -4,18 +4,22 @@
             "bindings": {
                 "0": {
                     "bufferBinding": 0,
-                    "descriptorType": "uniformBuffer"
+                    "descriptorType": "uniformBuffer",
+                    "name": "LIGHT"
                 },
                 "1": {
                     "bufferBinding": 2,
-                    "descriptorType": "uniformBuffer"
+                    "descriptorType": "uniformBuffer",
+                    "name": "VP"
                 },
                 "2": {
                     "bufferBinding": 1,
-                    "descriptorType": "uniformBuffer"
+                    "descriptorType": "uniformBuffer",
+                    "name": "SHADOW"
                 },
                 "3": {
                     "descriptorType": "combinedImageSampler",
+                    "name": "u_shadowMap",
                     "samplerBinding": 0,
                     "textureBinding": 0
                 }
@@ -26,16 +30,19 @@
             "bindings": {
                 "0": {
                     "descriptorType": "combinedImageSampler",
+                    "name": "u_irradianceMap",
                     "samplerBinding": 4,
                     "textureBinding": 4
                 },
                 "1": {
                     "descriptorType": "combinedImageSampler",
+                    "name": "u_prefilteredMap",
                     "samplerBinding": 5,
                     "textureBinding": 5
                 },
                 "2": {
                     "descriptorType": "combinedImageSampler",
+                    "name": "u_brdfLutMap",
                     "samplerBinding": 6,
                     "textureBinding": 6
                 }
@@ -46,21 +53,25 @@
             "bindings": {
                 "0": {
                     "descriptorType": "combinedImageSampler",
+                    "name": "u_depth",
                     "samplerBinding": 1,
                     "textureBinding": 1
                 },
                 "1": {
                     "descriptorType": "combinedImageSampler",
+                    "name": "u_normalRoughness",
                     "samplerBinding": 2,
                     "textureBinding": 2
                 },
                 "2": {
                     "descriptorType": "combinedImageSampler",
+                    "name": "u_albedoMetallic",
                     "samplerBinding": 3,
                     "textureBinding": 3
                 },
                 "3": {
                     "descriptorType": "combinedImageSampler",
+                    "name": "u_ssaoTex",
                     "samplerBinding": 7,
                     "textureBinding": 7
                 }

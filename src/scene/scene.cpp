@@ -61,11 +61,7 @@ void Scene::render(lv::GraphicsPipeline& graphicsPipeline) {
         auto &materialComponent = registry->get<lv::MaterialComponent>(entity);
 
         materialComponent.uploadUniforms();
-#ifdef LV_BACKEND_VULKAN
         graphicsPipeline.uploadPushConstants(&transformComponent.model, 0);
-#elif defined LV_BACKEND_METAL
-        graphicsPipeline.uploadPushConstants(&transformComponent.model, 0, sizeof(lv::PushConstantModel), LV_SHADER_STAGE_VERTEX_BIT);
-#endif
         meshComponent.render();
     }
 }
@@ -76,11 +72,7 @@ void Scene::renderShadows(lv::GraphicsPipeline& graphicsPipeline) {
         auto &meshComponent = registry->get<lv::MeshComponent>(entity);
         auto &transformComponent = registry->get<lv::TransformComponent>(entity);
 
-#ifdef LV_BACKEND_VULKAN
         graphicsPipeline.uploadPushConstants(&transformComponent.model.model, 0);
-#elif defined LV_BACKEND_METAL
-        graphicsPipeline.uploadPushConstants(&transformComponent.model.model, 1, sizeof(glm::mat4), LV_SHADER_STAGE_VERTEX_BIT);
-#endif
         meshComponent.renderShadows();
     }
 }
@@ -148,76 +140,10 @@ void Scene::loadEntity(entt::entity entity, nh::json& savedEntity) {
             transformComponent.scale.y = component["scale"]["y"];
             transformComponent.scale.z = component["scale"]["z"];
         }
-        //Model component
-        /*
-        if (componentName == MESH_COMPONENT_NAME) {
-            auto& modelComponent = registry->emplace<lv::ModelComponent>(entity
-#ifdef LV_BACKEND_VULKAN
-            , deferredLayout
-#endif
-            );
-            auto& component = JSON["entities"][uuid][MODEL_COMPONENT_NAME];
-
-            modelComponent.modelType = component["modelType"];
-            modelComponent.loaded = component["loaded"];
-            modelComponent.flipUVs = component["flipUVs"];
-            //std::cout << "MODEL_TYPE: " << modelComponent.modelType << std::endl;
-            if (modelComponent.modelType == lv::MODEL_TYPE_LOADED) {
-                //std::cout << "Normal model" << std::endl;
-                if (modelComponent.loaded) {
-                    std::string filename = component["filename"];
-                    modelComponent.load(filename.c_str());
-                    //std::cout << "Filename: " << modelComponent.filename << " : " << filename << std::endl;
-                }
-            } else if (modelComponent.modelType == lv::MODEL_TYPE_PLANE) {
-                modelComponent.createPlane();
-            }
-        }
-        */
         //Mesh component
         if (componentName == MESH_COMPONENT_NAME) {
-            lv::MeshComponent& meshComponent = editorRegistry.emplace<lv::MeshComponent>(entity
-#ifdef LV_BACKEND_VULKAN
-                , deferredLayout
-#endif
-            );
+            lv::MeshComponent& meshComponent = editorRegistry.emplace<lv::MeshComponent>(entity, deferredLayout);
             auto& component = savedEntity[MESH_COMPONENT_NAME];
-
-            /*
-            std::string vertStr = lv::readFile(vertDataFilename.c_str());
-            const char* vertChar = vertStr.c_str();
-
-            std::vector<lv::MainVertex> vertices((lv::MainVertex*)vertChar, (lv::MainVertex*)vertChar + strlen(vertChar) * sizeof(char));
-            */
-            //std::ifstream vertFile(vertDataFilename.c_str(), std::ios::in | std::ios::binary);
-            //size_t vertSize = std::filesystem::file_size(vertDataFilename);
-            //char* vertData = (char*)malloc(vertSize);
-            //vertFile.read(vertData, vertSize);
-            //void* vertData;
-            //size_t vertSize;
-            //lv::loadRawBinary(vertDataFilename.c_str(), &vertData, &vertSize);
-
-            //std::vector<lv::MainVertex> vertices((lv::MainVertex*)vertData, (lv::MainVertex*)vertData + vertSize / sizeof(lv::MainVertex));//((std::istreambuf_iterator<char>(vertFile)), std::istreambuf_iterator<char>());
-
-            //std::string indStr = lv::readFile(indDataFilename.c_str());
-            //const char* indChar = indStr.c_str();
-            //std::ifstream indFile(indDataFilename.c_str(), std::ios::in | std::ios::binary);
-            //size_t indSize = std::filesystem::file_size(indDataFilename);
-            //char* indData = (char*)malloc(indSize);
-            //indFile.read(indData, indSize);
-            //void* indData;
-            //size_t indSize;
-            //lv::loadRawBinary(indDataFilename.c_str(), &indData, &indSize);
-
-            //std::vector<uint32_t> indices((uint32_t*)indData, (uint32_t*)indData + indSize / sizeof(uint32_t));//((unsigned int*)indChar, (unsigned int*)indChar + strlen(indChar) * sizeof(char));
-
-            /*
-            if ((int)entity == 1) {
-                std::cout << vertices.size() << " : " << indices.size() << std::endl;
-            }
-            */
-
-            //meshComponent.init(vertices, indices);
 
             std::thread* thread = new std::thread([&](){
                 std::string vertDataFilename = component["vertDataFilename"];
@@ -235,17 +161,11 @@ void Scene::loadEntity(entt::entity entity, nh::json& savedEntity) {
                     meshComponent.setTexture(texture, texIndex);
                 }
             }
-#ifdef LV_BACKEND_VULKAN
             meshComponent.initDescriptorSet();
-#endif
         }
         //Material component
         if (componentName == MATERIAL_COMPONENT_NAME) {
-            auto& materialComponent = editorRegistry.emplace<lv::MaterialComponent>(entity
-#ifdef LV_BACKEND_VULKAN
-                , deferredLayout
-#endif
-            );
+            auto& materialComponent = editorRegistry.emplace<lv::MaterialComponent>(entity, deferredLayout);
             auto& component = savedEntity[MATERIAL_COMPONENT_NAME];
             
             materialComponent.material.albedo.x = component["albedo"]["r"];
@@ -386,26 +306,6 @@ void Scene::saveEntity(entt::entity entity, nh::json& savedEntity) {
                 component["textures"][std::to_string(i)]["filename"] = texture->filename;
         }
 
-        //component["vertices"] = meshComponent.vertices;
-        /*
-        for (unsigned int i = 0; i < meshComponent.vertices.size(); i++) {
-            component["vertices"][i][0][0] = meshComponent.vertices[i].position.x;
-            component["vertices"][i][0][1] = meshComponent.vertices[i].position.y;
-            component["vertices"][i][0][2] = meshComponent.vertices[i].position.z;
-
-            component["vertices"][i][1][0] = meshComponent.vertices[i].texCoord.x;
-            component["vertices"][i][1][1] = meshComponent.vertices[i].texCoord.y;
-
-            component["vertices"][i][2][0] = meshComponent.vertices[i].normal.x;
-            component["vertices"][i][2][1] = meshComponent.vertices[i].normal.y;
-            component["vertices"][i][2][2] = meshComponent.vertices[i].normal.z;
-
-            component["vertices"][i][3][0] = meshComponent.vertices[i].tangent.x;
-            component["vertices"][i][3][1] = meshComponent.vertices[i].tangent.y;
-            component["vertices"][i][3][2] = meshComponent.vertices[i].tangent.z;
-        }
-        component["indices"] = meshComponent.indices;
-        */
         std::string vertDataFilename = Scene::meshDataDir + "/mesh" + std::to_string(meshDataFilenameIndex) + "_vert";
         component["vertDataFilename"] = vertDataFilename;
         //std::ofstream vertDataOut(vertDataFilename.c_str(), std::ios::out | std::ios::binary);
@@ -420,12 +320,6 @@ void Scene::saveEntity(entt::entity entity, nh::json& savedEntity) {
         //indDataOut.write((char*)meshComponent.indices.data(), meshComponent.indices.size() * sizeof(unsigned int));
         lv::dumpRawBinary(indDataFilename.c_str(), meshComponent.indices.data(), meshComponent.indices.size() * sizeof(unsigned int));
         //indDataOut << meshComponent.indices.data() << std::endl;
-
-        /*
-        if ((int)entity == 1) {
-            std::cout << meshComponent.vertices.size() << " : " << meshComponent.indices.size() << std::endl;
-        }
-        */
 
         meshDataFilenameIndex++;
     }
@@ -709,21 +603,13 @@ void Scene::newEntityWithModel(const char* filename) {
 
     entity.addComponent<lv::TransformComponent>();
     
-    lv::MeshLoader meshLoader
-#ifdef LV_BACKEND_VULKAN
-        (g_game->deferredLayout)
-#endif
-    ;
+    lv::MeshLoader meshLoader(g_game->deferredLayout);
     meshLoader.loadFromFile(filename);
     for (unsigned int i = 0; i < meshLoader.meshes.size(); i++) {
         lv::Entity entity2(addEntity(), registry);
         entity2.addComponent<lv::TransformComponent>();
         entity2.addComponent<lv::MeshComponent>(meshLoader.meshes[i]);
-        entity2.addComponent<lv::MaterialComponent>(
-#ifdef LV_BACKEND_VULKAN
-            g_game->deferredLayout
-#endif
-        );
+        entity2.addComponent<lv::MaterialComponent>(g_game->deferredLayout);
 
         entity.getComponent<lv::NodeComponent>().childs.push_back(entity2.ID);
         entity2.getComponent<lv::NodeComponent>().parent = entity.ID;

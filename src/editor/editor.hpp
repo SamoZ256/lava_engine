@@ -58,11 +58,11 @@ public:
     //Gizmos
     ImGuizmo::OPERATION gizmosType = ImGuizmo::OPERATION::TRANSLATE;
 
+    lv::PipelineLayout& deferredLayout;
+
     //Descriptor sets
 #ifdef LV_BACKEND_VULKAN
     std::vector<VkDescriptorSet> viewportSets;
-
-    lv::PipelineLayout& deferredLayout;
 #elif defined LV_BACKEND_METAL
     std::vector<MTL::Texture*> viewportSets;
 #endif
@@ -78,6 +78,8 @@ public:
     lv::Texture translateButtonTex;
     lv::Texture rotateButtonTex;
     lv::Texture scaleButtonTex;
+
+    lv::Sampler sampler;
 
 #ifdef LV_BACKEND_VULKAN
     VkDescriptorSet playButtonSet;
@@ -97,11 +99,7 @@ public:
     MTL::Texture* scaleButtonSet;
 #endif
 
-#ifdef LV_BACKEND_VULKAN
     Editor(LvndWindow* aWindow, lv::PipelineLayout& aDeferredLayout) : window(aWindow), deferredLayout(aDeferredLayout) {}
-#elif defined LV_BACKEND_METAL
-    Editor(LvndWindow* aWindow) : window(aWindow) {}
-#endif
 
     void init();
 

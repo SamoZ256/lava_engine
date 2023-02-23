@@ -11,7 +11,6 @@
 #endif
 #include "lvnd/lvnd.h"
 
-#include "lvcore/core/allocator.hpp"
 #include "lvcore/core/shader_module.hpp"
 #include "lvcore/core/command_buffer.hpp"
 #include "lvcore/core/semaphore.hpp"
@@ -92,13 +91,6 @@ struct UBOMainVP {
     glm::vec3 cameraPos;
 };
 
-/*
-struct PCShadowVP {
-    glm::mat4 viewProj;
-    int layerIndex;
-};
-*/
-
 struct PCSsaoVP {
     glm::mat4 projection;
 	glm::mat4 view;
@@ -161,7 +153,7 @@ struct SSAORenderPass {
 #define SETUP_SSAO_DESCRIPTORS \
 ssaoDescriptorSet.addBinding(deferredRenderPass./*halfD*/depthSampler.descriptorInfo(deferredRenderPass./*halfD*/depthImageView, LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL), 0); /*disasmComputePass.outputColorAttachmentSampler.descriptorInfo(disasmComputePass.outputColorAttachmentView)*/ \
 ssaoDescriptorSet.addBinding(deferredRenderPass.normalRoughnessSampler.descriptorInfo(deferredRenderPass.normalRoughnessImageView), 1); \
-ssaoDescriptorSet.addBinding(aoNoiseTex.sampler.descriptorInfo(aoNoiseTex.imageView), 2);
+ssaoDescriptorSet.addBinding(aoNoiseSampler.descriptorInfo(aoNoiseTex.imageView), 2);
 
 //SSAO blur render pass
 struct SSAOBlurRenderPass {
@@ -176,8 +168,7 @@ struct SSAOBlurRenderPass {
 };
 
 #define SETUP_SSAO_BLUR_DESCRIPTORS \
-ssaoBlurDescriptorSet.addBinding(ssaoRenderPass.colorSampler.descriptorInfo(ssaoRenderPass.colorImageView), 0);/* \
-ssaoBlurDescriptorSet.addImageBinding(deferredRenderPass.positionDepthAttachmentSampler.descriptorInfo(), 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);*/
+ssaoBlurDescriptorSet.addBinding(ssaoRenderPass.colorSampler.descriptorInfo(ssaoRenderPass.colorImageView), 0);
 
 //Main render pass
 struct MainRenderPass {
@@ -200,9 +191,9 @@ mainDescriptorSet0.addBinding(mainShadowUniformBuffer.descriptorInfo(), 2); \
 mainDescriptorSet0.addBinding(shadowRenderPass.depthSampler.descriptorInfo(shadowRenderPass.depthImageView), 3); \
 
 #define SETUP_MAIN_1_DESCRIPTORS \
-mainDescriptorSet1.addBinding(skylight.irradianceMapSampler.descriptorInfo(skylight.irradianceMapImageView), 0); \
+mainDescriptorSet1.addBinding(skylight.sampler.descriptorInfo(skylight.irradianceMapImageView), 0); \
 mainDescriptorSet1.addBinding(skylight.prefilteredMapSampler.descriptorInfo(skylight.prefilteredMapImageView), 1); \
-mainDescriptorSet1.addBinding(brdfLutTexture.sampler.descriptorInfo(brdfLutTexture.imageView), 2);
+mainDescriptorSet1.addBinding(brdfLutSampler.descriptorInfo(brdfLutTexture.imageView), 2);
 
 #define SETUP_MAIN_2_DESCRIPTORS \
 mainDescriptorSet2.addBinding(deferredRenderPass.depthSampler.descriptorInfo(deferredRenderPass.depthImageView, LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL), 0); \
@@ -229,16 +220,12 @@ struct BloomRenderPass {
 
 #define SETUP_HDR_DESCRIPTORS \
 hdrDescriptorSet.addBinding(mainRenderPass.colorSampler.descriptorInfo(mainRenderPass.colorImageView), 0); \
-hdrDescriptorSet.addBinding(bloomRenderPass.downsampleSampler.descriptorInfo(bloomRenderPass.colorImageViews[0]), 1);/* \
-hdrDescriptorSet.addImageBinding(deferredRenderPass.depthAttachmentSampler.descriptorInfo(), 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); \
-hdrDescriptorSet.addImageBinding(deferredRenderPass.normalRoughnessAttachmentSampler.descriptorInfo(), 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);*/
+hdrDescriptorSet.addBinding(bloomRenderPass.downsampleSampler.descriptorInfo(bloomRenderPass.colorImageViews[0]), 1);
 
 /*
 struct DisasmComputePass {
     lv::Image outputColorAttachment;
-#ifdef LV_BACKEND_VULKAN
     lv::ImageView outputColorAttachmentView;
-#endif
     lv::Sampler outputColorAttachmentSampler;
 };
 */
@@ -316,22 +303,15 @@ int main() {
     lv::ThreadPoolCreateInfo threadPoolCreateInfo;
     lv::ThreadPool threadPool(threadPoolCreateInfo);
 
-#ifdef LV_BACKEND_VULKAN
     lv::InstanceCreateInfo instanceCreateInfo;
 	instanceCreateInfo.applicationName = "Lava Engine";
-	instanceCreateInfo.enableValidationLayers = true;
+	instanceCreateInfo.validationEnable = true;
 	lv::Instance instance(instanceCreateInfo);
-#endif
 
 	lv::DeviceCreateInfo deviceCreateInfo;
 	deviceCreateInfo.window = window;
     deviceCreateInfo.threadPool = &threadPool;
 	lv::Device device(deviceCreateInfo);
-
-#ifdef LV_BACKEND_VULKAN
-	lv::AllocatorCreateInfo allocatorCreateInfo;
-	lv::Allocator allocator(allocatorCreateInfo);
-#endif
 
 	lv::SwapChainCreateInfo swapChainCreateInfo;
 	swapChainCreateInfo.window = window;
@@ -345,21 +325,26 @@ int main() {
 	//descriptorPoolCreateInfo.poolSizes[VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE] = 2;
 	//descriptorPoolCreateInfo.poolSizes[VK_DESCRIPTOR_TYPE_STORAGE_IMAGE] = 2;
 	lv::DescriptorPool descriptorPool(descriptorPoolCreateInfo);
+
+    lv::MeshComponent::sampler.filter = LV_FILTER_LINEAR;
+    lv::MeshComponent::sampler.addressMode = LV_SAMPLER_ADDRESS_MODE_REPEAT;
+    lv::MeshComponent::sampler.init();
     
     uint8_t maxUint8 = std::numeric_limits<uint8_t>::max();
-    //std::cout << "Max int8_t: " << (int)maxInt8 << std::endl;
 
     glm::u8vec3 neutralColor(maxUint8, maxUint8, maxUint8);
-    lv::MeshComponent::neutralTexture.width = 1;
-    lv::MeshComponent::neutralTexture.height = 1;
-    lv::MeshComponent::neutralTexture.textureData = &neutralColor;
-    lv::MeshComponent::neutralTexture.init(0);
+    lv::MeshComponent::neutralTexture.image.format = LV_FORMAT_R8G8B8A8_UNORM;
+    lv::MeshComponent::neutralTexture.image.usage = LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_TRANSFER_DST_BIT;
+    lv::MeshComponent::neutralTexture.image.init(1, 1);
+    lv::MeshComponent::neutralTexture.image.copyDataTo(0, &neutralColor);
+    lv::MeshComponent::neutralTexture.imageView.init(&lv::MeshComponent::neutralTexture.image);
     
     glm::u8vec3 normalNeutralColor(maxUint8 / 2, maxUint8 / 2, maxUint8);
-    lv::MeshComponent::normalNeutralTexture.width = 1;
-    lv::MeshComponent::normalNeutralTexture.height = 1;
-    lv::MeshComponent::normalNeutralTexture.textureData = &normalNeutralColor;
-    lv::MeshComponent::normalNeutralTexture.init(0);
+    lv::MeshComponent::normalNeutralTexture.image.format = LV_FORMAT_R8G8B8A8_UNORM;
+    lv::MeshComponent::normalNeutralTexture.image.usage = LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_TRANSFER_DST_BIT;
+    lv::MeshComponent::normalNeutralTexture.image.init(1, 1);
+    lv::MeshComponent::normalNeutralTexture.image.copyDataTo(0, &normalNeutralColor);
+    lv::MeshComponent::normalNeutralTexture.imageView.init(&lv::MeshComponent::normalNeutralTexture.image);
 
     //Equirectangular to cubemap shader
     lv::PipelineLayout equiToCubeLayout;
@@ -460,7 +445,7 @@ int main() {
 	skylightLayout.descriptorSetLayouts[0].addBinding(0, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Environment map
 
     skylightLayout.pushConstantRanges.resize(1);
-	skylightLayout.pushConstantRanges[0].stageFlags = LV_SHADER_STAGE_VERTEX_BIT | LV_SHADER_STAGE_FRAGMENT_BIT;
+	skylightLayout.pushConstantRanges[0].stageFlags = LV_SHADER_STAGE_VERTEX_BIT;
 	skylightLayout.pushConstantRanges[0].offset = 0;
 	skylightLayout.pushConstantRanges[0].size = sizeof(glm::mat4);
 
@@ -496,6 +481,13 @@ int main() {
     pointLightLayout.descriptorSetLayouts[0].addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Depth
     pointLightLayout.descriptorSetLayouts[0].addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Normal roughness
     pointLightLayout.descriptorSetLayouts[0].addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Albedo metallic
+
+    pointLightLayout.pushConstantRanges.resize(1);
+	pointLightLayout.pushConstantRanges[0].stageFlags = LV_SHADER_STAGE_VERTEX_BIT;
+	pointLightLayout.pushConstantRanges[0].offset = 0;
+	pointLightLayout.pushConstantRanges[0].size = sizeof(glm::vec3);
+
+    pointLightLayout.init();
     */
 
     //Bloom shader
@@ -522,6 +514,8 @@ int main() {
 
     disasmLayout.descriptorSetLayouts[0].addBinding(0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, LV_SHADER_STAGE_COMPUTE_BIT); //Input depth
     disasmLayout.descriptorSetLayouts[0].addBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, LV_SHADER_STAGE_COMPUTE_BIT); //Output depth
+
+    disasmLayout.init();
     */
 
     //Game
@@ -621,7 +615,6 @@ int main() {
 
     deferredRenderPass.renderPass.init();
 
-    //deferredRenderPass.framebuffer.addColorAttachment({&deferredRenderPass.positionDepthAttachment, &deferredRenderPass.positionDepthAttachmentView, 0});
     deferredRenderPass.framebuffer.addColorAttachment({
         .imageView = &deferredRenderPass.normalRoughnessImageView,
         .index = 0
@@ -647,7 +640,6 @@ int main() {
     shadowRenderPass.depthImage.layerCount = CASCADE_COUNT;
     shadowRenderPass.depthImage.aspectMask = LV_IMAGE_ASPECT_DEPTH_BIT;
     shadowRenderPass.depthImage.viewType = LV_IMAGE_VIEW_TYPE_2D_ARRAY;
-    //shadowRenderPass.depthAttachment.flags |= VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT;
     shadowRenderPass.depthImage.init(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
     shadowRenderPass.depthImageView.init(&shadowRenderPass.depthImage);
     for (uint8_t i = 0; i < CASCADE_COUNT; i++) {
@@ -657,7 +649,6 @@ int main() {
     }
     shadowRenderPass.depthSampler.filter = LV_FILTER_LINEAR;
     shadowRenderPass.depthSampler.compareEnable = LV_TRUE;
-    //shadowRenderPass.depthAttachmentSampler.compareOp = LV_COMPARE_OP_LESS;
     shadowRenderPass.depthSampler.init();
 
     shadowRenderPass.subpass.setDepthAttachment({
@@ -947,14 +938,10 @@ int main() {
     DisasmComputePass disasmComputePass{};
     disasmComputePass.outputColorAttachment.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_STORAGE_BIT;
     disasmComputePass.outputColorAttachment.format = LV_FORMAT_R16_SNORM;
-#ifdef LV_BACKEND_VULKAN
     disasmComputePass.outputColorAttachment.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     disasmComputePass.outputColorAttachment.finalLayout = VK_IMAGE_LAYOUT_GENERAL;
-#endif
     disasmComputePass.outputColorAttachment.init(SRC_WIDTH, SRC_HEIGHT);
-#ifdef LV_BACKEND_VULKAN
     disasmComputePass.outputColorAttachmentView.init(&disasmComputePass.outputColorAttachment);
-#endif
     disasmComputePass.outputColorAttachmentSampler.init();
 #pragma endregion DISASM_COMPUTE_PASS
     */
@@ -1294,29 +1281,16 @@ int main() {
     // *************** Point light shader ***************
     /*
 #pragma region POINT_LIGHT_SHADER
-#ifdef LV_BACKEND_VULKAN
-    pointLightLayout.pushConstantRanges.resize(1);
-	pointLightLayout.pushConstantRanges[0].stageFlags = LV_SHADER_STAGE_VERTEX_BIT;
-	pointLightLayout.pushConstantRanges[0].offset = 0;
-	pointLightLayout.pushConstantRanges[0].size = sizeof(glm::vec3);
-
-    pointLightLayout.init();
-#endif
-
     //Vertex
     lv::ShaderModuleCreateInfo vertPointLightCreateInfo{};
-#ifdef LV_BACKEND_VULKAN
-    vertPointLightCreateInfo.shaderType = LV_SHADER_STAGE_VERTEX_BIT;
-#endif
+    vertPointLightCreateInfo.shaderStage = LV_SHADER_STAGE_VERTEX_BIT;
     vertPointLightCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("vertex/point_light"));
 
     lv::ShaderModule vertPointLightModule(vertPointLightCreateInfo);
 
     //Fragment
     lv::ShaderModuleCreateInfo fragPointLightCreateInfo{};
-#ifdef LV_BACKEND_VULKAN
-    fragPointLightCreateInfo.shaderType = LV_SHADER_STAGE_FRAGMENT_BIT;
-#endif
+    fragPointLightCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
     fragPointLightCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/point_light"));
 
     lv::ShaderModule fragPointLightModule(fragPointLightCreateInfo);
@@ -1326,12 +1300,8 @@ int main() {
 	
 	pointLightGraphicsPipelineCreateInfo.vertexShaderModule = &vertPointLightModule;
 	pointLightGraphicsPipelineCreateInfo.fragmentShaderModule = &fragPointLightModule;
-#ifdef LV_BACKEND_VULKAN
 	pointLightGraphicsPipelineCreateInfo.pipelineLayout = &pointLightLayout;
 	pointLightGraphicsPipelineCreateInfo.renderPass = &mainRenderPass.renderPass;
-#elif defined LV_BACKEND_METAL
-    pointLightGraphicsPipelineCreateInfo.framebuffer = &mainRenderPass.framebuffer;
-#endif
 
     pointLightGraphicsPipelineCreateInfo.vertexDescriptor = lv::Vertex3D::getVertexDescriptor();
 
@@ -1436,15 +1406,9 @@ int main() {
     // *************** Disassemble depth shader ***************
     /*
 #pragma region DISASSEMBLE_DEPTH_SHADER
-#ifdef LV_BACKEND_VULKAN
-    disasmLayout.init();
-#endif
-
     //Compute
     lv::ShaderModuleCreateInfo compDisasmCreateInfo{};
-#ifdef LV_BACKEND_VULKAN
-    compDisasmCreateInfo.shaderType = LV_SHADER_STAGE_COMPUTE_BIT;
-#endif
+    compDisasmCreateInfo.shaderStage = LV_SHADER_STAGE_COMPUTE_BIT;
     compDisasmCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("compute/disassemble_depth"));
 
     lv::ShaderModule compDisasmModule(compDisasmCreateInfo);
@@ -1453,9 +1417,7 @@ int main() {
     lv::ComputePipelineCreateInfo disasmComputePipelineCreateInfo{};
 
     disasmComputePipelineCreateInfo.computeShaderModule = &compDisasmModule;
-#ifdef LV_BACKEND_VULKAN
     disasmComputePipelineCreateInfo.pipelineLayout = &disasmLayout;
-#endif
 
     lv::ComputePipeline disasmComputePipeline(disasmComputePipelineCreateInfo);
 
@@ -1480,10 +1442,24 @@ int main() {
     directLight.light.direction = glm::normalize(glm::vec3(2.0f, -4.0f, 1.0f));
 
     //Uniform buffers
-    lv::UniformBuffer deferredVPUniformBuffer(sizeof(glm::mat4));
-    lv::UniformBuffer shadowVPUniformBuffers[CASCADE_COUNT] = { lv::UniformBuffer(sizeof(glm::mat4)), lv::UniformBuffer(sizeof(glm::mat4)), lv::UniformBuffer(sizeof(glm::mat4)) };
-    lv::UniformBuffer mainShadowUniformBuffer(sizeof(glm::mat4) * CASCADE_COUNT);
-    lv::UniformBuffer mainVPUniformBuffer(sizeof(UBOMainVP));
+    lv::Buffer deferredVPUniformBuffer;
+    deferredVPUniformBuffer.usage = LV_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    deferredVPUniformBuffer.memoryType = LV_MEMORY_TYPE_SHARED;
+    deferredVPUniformBuffer.init(sizeof(glm::mat4));
+    lv::Buffer shadowVPUniformBuffers[CASCADE_COUNT];
+    for (uint8_t i = 0; i < CASCADE_COUNT; i++) {
+        shadowVPUniformBuffers[i].usage = LV_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        shadowVPUniformBuffers[i].memoryType = LV_MEMORY_TYPE_SHARED;
+        shadowVPUniformBuffers[i].init(sizeof(glm::mat4));
+    }
+    lv::Buffer mainShadowUniformBuffer;
+    mainShadowUniformBuffer.usage = LV_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    mainShadowUniformBuffer.memoryType = LV_MEMORY_TYPE_SHARED;
+    mainShadowUniformBuffer.init(sizeof(glm::mat4) * CASCADE_COUNT);
+    lv::Buffer mainVPUniformBuffer;
+    mainVPUniformBuffer.usage = LV_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    mainVPUniformBuffer.memoryType = LV_MEMORY_TYPE_SHARED;
+    mainVPUniformBuffer.init(sizeof(UBOMainVP));
 
     //Textures
     std::default_random_engine rndEngine((unsigned)time(0));
@@ -1509,12 +1485,14 @@ int main() {
     }
 
     lv::Texture aoNoiseTex;
-    aoNoiseTex.format = LV_FORMAT_R8G8B8A8_SNORM;
-    aoNoiseTex.textureData = hbaoNoise.data();
-    aoNoiseTex.width = AO_NOISE_TEX_SIZE;
-    aoNoiseTex.height = AO_NOISE_TEX_SIZE;
-    aoNoiseTex.sampler.addressMode = LV_SAMPLER_ADDRESS_MODE_REPEAT;
-    aoNoiseTex.init(0);
+    aoNoiseTex.image.format = LV_FORMAT_R8G8B8A8_SNORM;
+    aoNoiseTex.image.usage = LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_TRANSFER_DST_BIT;
+    aoNoiseTex.image.init(AO_NOISE_TEX_SIZE, AO_NOISE_TEX_SIZE);
+    aoNoiseTex.image.copyDataTo(0, hbaoNoise.data());
+    aoNoiseTex.imageView.init(&aoNoiseTex.image);
+    lv::Sampler aoNoiseSampler;
+    aoNoiseSampler.addressMode = LV_SAMPLER_ADDRESS_MODE_REPEAT;
+    aoNoiseSampler.init();
 
     //Skylight
     lv::Skylight skylight(0);
@@ -1524,64 +1502,89 @@ int main() {
     skylight.createPrefilteredMap(0, prefilteredGraphicsPipeline);
 
     lv::Texture brdfLutTexture;
-    brdfLutTexture.load("assets/textures/brdf_lut.png");
-    brdfLutTexture.init(0);
+    brdfLutTexture.init("assets/textures/brdf_lut.png");
+    lv::Sampler brdfLutSampler;
+    brdfLutSampler.filter = LV_FILTER_LINEAR;
+    brdfLutSampler.init();
 
     //Descriptor sets
 
     //Deferred descriptor set
-    lv::DescriptorSet deferredDecriptorSet(deferredLayout, 0);
+    lv::DescriptorSet deferredDecriptorSet;
+    deferredDecriptorSet.pipelineLayout = &deferredLayout;
+    deferredDecriptorSet.layoutIndex = 0;
     deferredDecriptorSet.addBinding(deferredVPUniformBuffer.descriptorInfo(), 0);
-
     deferredDecriptorSet.init();
 
     //Shadow descriptor set
-    lv::DescriptorSet shadowDecriptorSets[CASCADE_COUNT] = { lv::DescriptorSet(shadowLayout, 0), lv::DescriptorSet(shadowLayout, 0), lv::DescriptorSet(shadowLayout, 0) };
+    lv::DescriptorSet shadowDecriptorSets[CASCADE_COUNT];
     for (uint8_t i = 0; i < CASCADE_COUNT; i++) {
+        shadowDecriptorSets[i].pipelineLayout = &shadowLayout;
+        shadowDecriptorSets[i].layoutIndex = 0;
         shadowDecriptorSets[i].addBinding(shadowVPUniformBuffers[i].descriptorInfo(), 0);
         shadowDecriptorSets[i].init();
     }
 
     //Skylight descriptor set
-    lv::DescriptorSet skylightDescriptorSet(skylightLayout, 0);
-    skylightDescriptorSet.addBinding(skylight.environmentMapSampler.descriptorInfo(skylight.environmentMapImageView), 0);
+    lv::DescriptorSet skylightDescriptorSet;
+    skylightDescriptorSet.pipelineLayout = &skylightLayout;
+    skylightDescriptorSet.layoutIndex = 0;
+    skylightDescriptorSet.addBinding(skylight.sampler.descriptorInfo(skylight.environmentMapImageView), 0);
     skylightDescriptorSet.init();
 
-    lv::DescriptorSet ssaoDescriptorSet(ssaoLayout, 0);
+    lv::DescriptorSet ssaoDescriptorSet;
+    ssaoDescriptorSet.pipelineLayout = &ssaoLayout;
+    ssaoDescriptorSet.layoutIndex = 0;
     SETUP_SSAO_DESCRIPTORS
     ssaoDescriptorSet.init();
 
-    lv::DescriptorSet ssaoBlurDescriptorSet(ssaoBlurLayout, 0);
+    lv::DescriptorSet ssaoBlurDescriptorSet;
+    ssaoBlurDescriptorSet.pipelineLayout = &ssaoBlurLayout;
+    ssaoBlurDescriptorSet.layoutIndex = 0;
     SETUP_SSAO_BLUR_DESCRIPTORS
     ssaoBlurDescriptorSet.init();
 
-    lv::DescriptorSet mainDescriptorSet0(mainLayout, 0);
+    lv::DescriptorSet mainDescriptorSet0;
+    mainDescriptorSet0.pipelineLayout = &mainLayout;
+    mainDescriptorSet0.layoutIndex = 0;
     SETUP_MAIN_0_DESCRIPTORS
     mainDescriptorSet0.init();
 
-    lv::DescriptorSet mainDescriptorSet1(mainLayout, 1);
+    lv::DescriptorSet mainDescriptorSet1;
+    mainDescriptorSet1.pipelineLayout = &mainLayout;
+    mainDescriptorSet1.layoutIndex = 1;
     SETUP_MAIN_1_DESCRIPTORS
     mainDescriptorSet1.init();
 
-    lv::DescriptorSet mainDescriptorSet2(mainLayout, 2);
+    lv::DescriptorSet mainDescriptorSet2;
+    mainDescriptorSet2.pipelineLayout = &mainLayout;
+    mainDescriptorSet2.layoutIndex = 2;
     SETUP_MAIN_2_DESCRIPTORS
     mainDescriptorSet2.init();
 
-    lv::DescriptorSet downsampleDescriptorSets[BLOOM_MIP_COUNT] = { lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0) };
+    lv::DescriptorSet downsampleDescriptorSets[BLOOM_MIP_COUNT];
+    downsampleDescriptorSets[0].pipelineLayout = &bloomLayout;
+    downsampleDescriptorSets[0].layoutIndex = 0;
     downsampleDescriptorSets[0].addBinding(bloomRenderPass.downsampleSampler.descriptorInfo(mainRenderPass.colorImageView), 0);
     downsampleDescriptorSets[0].init();
     for (uint8_t i = 1; i < BLOOM_MIP_COUNT; i++) {
+        downsampleDescriptorSets[i].pipelineLayout = &bloomLayout;
+        downsampleDescriptorSets[i].layoutIndex = 0;
         downsampleDescriptorSets[i].addBinding(bloomRenderPass.downsampleSampler.descriptorInfo(bloomRenderPass.colorImageViews[i - 1]), 0);
         downsampleDescriptorSets[i].init();
     }
 
-    lv::DescriptorSet upsampleDescriptorSets[BLOOM_MIP_COUNT - 1] = { lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0), lv::DescriptorSet(bloomLayout, 0) };
+    lv::DescriptorSet upsampleDescriptorSets[BLOOM_MIP_COUNT - 1];
     for (uint8_t i = 0; i < BLOOM_MIP_COUNT - 1; i++) {
+        upsampleDescriptorSets[i].pipelineLayout = &bloomLayout;
+        upsampleDescriptorSets[i].layoutIndex = 0;
         upsampleDescriptorSets[i].addBinding(bloomRenderPass.upsampleSampler.descriptorInfo(bloomRenderPass.colorImageViews[i + 1]), 0);
         upsampleDescriptorSets[i].init();
     }
 
-    lv::DescriptorSet hdrDescriptorSet(hdrLayout, 0);
+    lv::DescriptorSet hdrDescriptorSet;
+    hdrDescriptorSet.pipelineLayout = &hdrLayout;
+    hdrDescriptorSet.layoutIndex = 0;
     SETUP_HDR_DESCRIPTORS
     hdrDescriptorSet.init();
 
@@ -1626,11 +1629,7 @@ int main() {
     std::cout << ");" << std::endl;
 
     //Editor
-    Editor editor(window
-#ifdef LV_BACKEND_VULKAN
-    , deferredLayout
-#endif
-    );
+    Editor editor(window, deferredLayout);
 
     editor.init();
 
@@ -1641,8 +1640,6 @@ int main() {
         hdrRenderPass.colorImage.images
 #endif
     );
-
-    //return 0;
 
     while (lvndWindowIsOpen(window)) {
         //Delta time
@@ -1761,7 +1758,7 @@ int main() {
 
         glm::mat4 viewProj = g_game->scene().camera->projection * g_game->scene().camera->view;
 
-        deferredVPUniformBuffer.upload(&viewProj);
+        deferredVPUniformBuffer.copyDataTo(0, &viewProj);
 
         game.scene().render(deferredGraphicsPipeline);
 
@@ -1788,7 +1785,7 @@ int main() {
                 shadowDecriptorSets[i].bind();
 
                 //PCShadowVP pcShadowVP{shadowVPs[i], (int)i};
-                shadowVPUniformBuffers[i].upload(&shadowVPs[i]);
+                shadowVPUniformBuffers[i].copyDataTo(0, &shadowVPs[i]);
 
                 game.scene().renderShadows(shadowGraphicsPipeline);
 
@@ -1804,12 +1801,7 @@ int main() {
         /*
         disasmComputePipeline.bind();
 
-#ifdef LV_BACKEND_VULKAN
         disasmDescriptorSet.bind();
-#elif defined(LV_BACKEND_METAL)
-        deferredRenderPass.depthAttachment.bind(0, LV_SHADER_STAGE_COMPUTE_BIT);
-        disasmComputePass.outputColorAttachment.bind(1, LV_SHADER_STAGE_COMPUTE_BIT);
-#endif
 
         disasmComputePipeline.dispatch(64, 64, 1,
                                        (SRC_WIDTH + 64 - 1) / 64, (SRC_HEIGHT + 64 - 1) / 64, 1);
@@ -1826,9 +1818,6 @@ int main() {
         depthBlitCommandBuffer.submit(&deferredRenderSemaphore, &depthBlitSemaphore);
         */
 
-        //deferredRenderPass.halfDepthImage.transitionLayout(0, 0, LV_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
-        //deferredRenderPass.depthImage.transitionLayout(0, 0, LV_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
-
         //SSAO render pass
         ssaoRenderPass.commandBuffer.bind();
 
@@ -1840,11 +1829,7 @@ int main() {
         ssaoDescriptorSet.bind();
 
         PCSsaoVP pcSsaoVP{g_game->scene().camera->projection, g_game->scene().camera->view, glm::inverse(viewProj)};
-        ssaoGraphicsPipeline.uploadPushConstants(&pcSsaoVP, 0
-#ifdef LV_BACKEND_METAL
-        , sizeof(PCSsaoVP), LV_SHADER_STAGE_FRAGMENT_BIT
-#endif
-        );
+        ssaoGraphicsPipeline.uploadPushConstants(&pcSsaoVP, 0);
 
         swapChain.renderFullscreenTriangle();
 
@@ -1884,20 +1869,12 @@ int main() {
         skylightDescriptorSet.bind();
 
         glm::mat4 skylightViewProj = g_game->scene().camera->projection * glm::mat4(glm::mat3(g_game->scene().camera->view));
-    
-        skylightGraphicsPipeline.uploadPushConstants(&skylightViewProj, 0
-#ifdef LV_BACKEND_METAL
-        , sizeof(glm::mat4), LV_SHADER_STAGE_VERTEX_BIT
-#endif
-        );
 
-        skylight.vertexBuffer->bindVertexBuffer(
-#ifdef LV_BACKEND_METAL
-            lv::Vertex3D::BINDING_INDEX
-#endif
-        );
-        skylight.indexBuffer->bindIndexBuffer(LV_INDEX_TYPE_UINT32);
-        skylight.indexBuffer->renderIndexed(sizeof(uint32_t));
+        skylightGraphicsPipeline.uploadPushConstants(&skylightViewProj, 0);
+
+        skylight.vertexBuffer.bindVertexBuffer();
+        skylight.indexBuffer.bindIndexBuffer(LV_INDEX_TYPE_UINT32);
+        skylight.indexBuffer.renderIndexed(sizeof(uint32_t));
 
         //Main
         mainGraphicsPipeline.bind();
@@ -1908,10 +1885,10 @@ int main() {
         mainDescriptorSet2.bind();
 
         UBOMainVP uboMainVP{glm::inverse(viewProj), g_game->scene().camera->position};
-        mainVPUniformBuffer.upload(&uboMainVP);
+        mainVPUniformBuffer.copyDataTo(0, &uboMainVP);
 
-        directLight.lightUniformBuffer.upload(&directLight.light);
-        mainShadowUniformBuffer.upload(shadowVPs);
+        directLight.lightUniformBuffer.copyDataTo(0, &directLight.light);
+        mainShadowUniformBuffer.copyDataTo(0, shadowVPs);
 
         swapChain.renderFullscreenTriangle();
 
@@ -1950,7 +1927,9 @@ int main() {
             upsampleGraphicsPipeline.bind();
             bloomRenderPass.viewports[i].bind();
 
+            std::cout << "Test 5.3 passed" << std::endl;
             upsampleDescriptorSets[i].bind();
+            std::cout << "Test 5.4 passed" << std::endl;
 
             swapChain.renderFullscreenTriangle();
 
@@ -1960,6 +1939,7 @@ int main() {
         bloomRenderPass.upsampleCommandBuffer.unbind();
 
         bloomRenderPass.upsampleCommandBuffer.submit();
+        std::cout << "Test 6 passed" << std::endl;
 
         //HDR render pass
         hdrRenderPass.commandBuffer.bind();
@@ -2002,11 +1982,11 @@ int main() {
                 case AMBIENT_OCCLUSION_TYPE_NONE:
                     break;
                 case AMBIENT_OCCLUSION_TYPE_SSAO:
-                    aoNoiseTex.image.fillWithData(0, ssaoNoise.data(), 4);
+                    aoNoiseTex.image.copyDataTo(0, ssaoNoise.data());
 
                     break;
                 case AMBIENT_OCCLUSION_TYPE_HBAO:
-                    aoNoiseTex.image.fillWithData(0, hbaoNoise.data(), 4);
+                    aoNoiseTex.image.copyDataTo(0, hbaoNoise.data());
 
                     break;
                 default:
@@ -2119,15 +2099,12 @@ int main() {
 
     editor.destroy();
 
-#ifdef LV_BACKEND_VULKAN
-    allocator.destroy();
-#endif
     descriptorPool.destroy();
     swapChain.destroy();
 	device.destroy();
-#ifdef LV_BACKEND_VULKAN
     instance.destroy();
 
+#ifdef LV_BACKEND_VULKAN
     lvndVulkanDestroyLayer(window);
 #elif defined(LV_BACKEND_METAL)
     lvndMetalDestroyLayer(window);
@@ -2263,17 +2240,9 @@ void newEntityPlane() {
     lv::Entity entity(g_game->scene().addEntity(), g_game->scene().registry);
     entity.getComponent<lv::TagComponent>().name = "plane";
     entity.addComponent<lv::TransformComponent>();
-    lv::MeshComponent& meshComponent = entity.addComponent<lv::MeshComponent>(
-#ifdef LV_BACKEND_VULKAN
-        g_game->deferredLayout
-#endif
-    );
+    lv::MeshComponent& meshComponent = entity.addComponent<lv::MeshComponent>(g_game->deferredLayout);
     meshComponent.createPlane(0);
-    entity.addComponent<lv::MaterialComponent>(
-#ifdef LV_BACKEND_VULKAN
-        g_game->deferredLayout
-#endif
-    );
+    entity.addComponent<lv::MaterialComponent>(g_game->deferredLayout);
 }
 
 void duplicateEntity() {

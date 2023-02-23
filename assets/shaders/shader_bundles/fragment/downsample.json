@@ -4,6 +4,7 @@
             "bindings": {
                 "0": {
                     "descriptorType": "combinedImageSampler",
+                    "name": "srcTexture",
                     "samplerBinding": 0,
                     "textureBinding": 0
                 }

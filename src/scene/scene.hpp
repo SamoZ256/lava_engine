@@ -72,11 +72,9 @@ public:
 
     static std::string aoTypeStr[AMBIENT_OCCLUSION_TYPE_COUNT];
 
-#ifdef LV_BACKEND_VULKAN
     lv::PipelineLayout& deferredLayout;
 
     Scene(lv::PipelineLayout& aDeferredLayout) : deferredLayout(aDeferredLayout) {}
-#endif
 
     void destroy();
 

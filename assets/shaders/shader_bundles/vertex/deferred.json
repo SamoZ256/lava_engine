@@ -3,8 +3,9 @@
         "0": {
             "bindings": {
                 "0": {
-                    "bufferBinding": 1,
-                    "descriptorType": "uniformBuffer"
+                    "bufferBinding": 0,
+                    "descriptorType": "uniformBuffer",
+                    "name": "VP"
                 }
             },
             "maxBinding": "0"
@@ -12,7 +13,8 @@
     },
     "maxSet": "0",
     "pushConstant": {
-        "bufferBinding": 0
+        "bufferBinding": 1,
+        "name": "u_model"
     },
     "stage": "unknown"
 }
