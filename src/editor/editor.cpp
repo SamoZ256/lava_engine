@@ -57,6 +57,8 @@ void Editor::init() {
     ImGui_ImplLvnd_InitForVulkan(window, true);
 #elif defined(LV_BACKEND_METAL)
     ImGui_ImplLvnd_InitForOther(window, true);
+#elif defined(LV_BACKEND_OPENGL)
+    ImGui_ImplLvnd_InitForOpenGL(window, true);
 #endif
 
 #ifdef LV_BACKEND_VULKAN
@@ -75,6 +77,8 @@ void Editor::init() {
     ImGui_ImplVulkan_Init(&init_info, lv::g_swapChain->renderPass.renderPass);
 #elif defined(LV_BACKEND_METAL)
     ImGui_ImplMetal_Init(lv::g_device->device);
+#elif defined(LV_BACKEND_OPENGL)
+    ImGui_ImplOpenGL3_Init("#version 410");
 #endif
 
 #ifdef LV_BACKEND_VULKAN
@@ -85,8 +89,10 @@ void Editor::init() {
     
     //clear font textures from cpu data
     ImGui_ImplVulkan_DestroyFontUploadObjects();
-#elif defined LV_BACKEND_METAL
+#elif defined(LV_BACKEND_METAL)
     ImGui_ImplMetal_CreateFontsTexture(lv::g_device->device);
+#elif defined(LV_BACKEND_OPENGL)
+    ImGui_ImplOpenGL3_CreateFontsTexture();
 #endif
 
     //Textures and descriptor sets
@@ -117,6 +123,14 @@ void Editor::init() {
     translateButtonSet = translateButtonTex.image.images[0];
     rotateButtonSet = rotateButtonTex.image.images[0];
     scaleButtonSet = scaleButtonTex.image.images[0];
+#elif defined(LV_BACKEND_OPENGL)
+    playButtonSet = playButtonTex.image.image;
+    stopButtonSet = stopButtonTex.image.image;
+    folderSet = folderTex.image.image;
+    fileSet = fileTex.image.image;
+    translateButtonSet = translateButtonTex.image.image;
+    rotateButtonSet = rotateButtonTex.image.image;
+    scaleButtonSet = scaleButtonTex.image.image;
 #endif
 
     lvndGetWindowSize(window, &viewportWidth, &viewportHeight);
@@ -135,8 +149,10 @@ void Editor::resize() {
 void Editor::newFrame() {
 #ifdef LV_BACKEND_VULKAN
 	ImGui_ImplVulkan_NewFrame();
-#elif defined LV_BACKEND_METAL
+#elif defined(LV_BACKEND_METAL)
     ImGui_ImplMetal_NewFrame(lv::g_swapChain->activeRenderPasses[fmin(lv::g_swapChain->crntFrame, lv::g_swapChain->activeRenderPasses.size() - 1)]);
+#elif defined(LV_BACKEND_OPENGL)
+    ImGui_ImplOpenGL3_NewFrame();
 #endif
 	ImGui_ImplLvnd_NewFrame();
 
@@ -148,8 +164,10 @@ void Editor::render() {
 	ImGui::Render();
 #ifdef LV_BACKEND_VULKAN
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), lv::g_swapChain->getActiveCommandBuffer());
-#elif defined LV_BACKEND_METAL
+#elif defined(LV_BACKEND_METAL)
     ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), lv::g_swapChain->getActiveCommandBuffer(), lv::g_swapChain->activeRenderEncoder);
+#elif defined(LV_BACKEND_OPENGL)
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 #endif
     //lv::g_swapChain->activeFramebuffer->encoder->popDebugGroup();
 }
@@ -157,16 +175,20 @@ void Editor::render() {
 void Editor::createViewportSet(
 #ifdef LV_BACKEND_VULKAN
         std::vector<VkImageView>& viewportImageViews, VkSampler& viewportSampler
-#elif defined LV_BACKEND_METAL
+#elif defined(LV_BACKEND_METAL)
         std::vector<MTL::Texture*>& viewportImages
+#elif defined(LV_BACKEND_OPENGL)
+        GLuint viewportImage
 #endif
 ) {
 #ifdef LV_BACKEND_VULKAN
     viewportSets.resize(lv::g_swapChain->maxFramesInFlight);
   	for (uint8_t i = 0; i < lv::g_swapChain->maxFramesInFlight; i++)
 		viewportSets[i] = createDescriptorSet(viewportImageViews[i], viewportSampler);
-#elif defined LV_BACKEND_METAL
+#elif defined(LV_BACKEND_METAL)
     viewportSets = viewportImages;
+#elif defined(LV_BACKEND_OPENGL)
+    viewportSet = viewportImage;
 #endif
 }
 
@@ -180,8 +202,10 @@ void Editor::destroy() {
 #ifdef LV_BACKEND_VULKAN
   	vkDestroyDescriptorPool(lv::g_device->device(), imguiPool, nullptr);
 	ImGui_ImplVulkan_Shutdown();
-#elif defined LV_BACKEND_METAL
+#elif defined(LV_BACKEND_METAL)
     ImGui_ImplMetal_Shutdown();
+#elif defined(LV_BACKEND_OPENGL)
+    ImGui_ImplOpenGL3_Shutdown();
 #endif
     ImGui_ImplLvnd_Shutdown();
     ImGui::DestroyContext();
@@ -342,7 +366,11 @@ void Editor::createViewport(const char* title, ViewportType viewportType) {
             //std::cout << (int)viewportWidth << ", " << (int)viewportHeight << " : " << camera.aspectRatio << std::endl;
             //std::cout << "Resized" << std::endl;
         }
+#ifdef LV_BACKEND_OPENGL
+        ImGui::Image((ImTextureID)(uintptr_t)viewportSet, viewportSize);
+#else
         ImGui::Image((ImTextureID)viewportSets[lv::g_swapChain->crntFrame], viewportSize);
+#endif
 
         //Drag drop
         if (ImGui::BeginDragDropTarget()) {
@@ -575,10 +603,9 @@ void Editor::createPropertiesPanel() {
                             */
                             if (extension == ".png" || extension == ".jpg" || extension == ".jpeg") {
                                 meshComponent.setTexture(lv::MeshComponent::loadTextureFromFile(0, itemPath.c_str()), i);
-#ifdef LV_BACKEND_VULKAN
+                                //TODO: update instead of destroying
                                 meshComponent.destroyDescriptorSet();
                                 meshComponent.initDescriptorSet();
-#endif
                             }
                         }
 
@@ -826,9 +853,7 @@ void Editor::createPropertiesPanel() {
             if (selectedEntity.hasComponent<lv::CameraComponent>() && selectedEntity.getComponent<lv::CameraComponent>().active) {
                 //TODO: create popup window to warn the user
             } else {
-#ifdef LV_BACKEND_VULKAN
                 lv::g_device->waitIdle();
-#endif
                 if (selectedEntity.hasComponent<lv::MeshComponent>()) selectedEntity.getComponent<lv::MeshComponent>().destroy();
                 if (selectedEntity.hasComponent<lv::MaterialComponent>()) selectedEntity.getComponent<lv::MaterialComponent>().destroy();
                 selectedEntity.destroy();

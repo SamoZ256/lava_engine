@@ -1,4 +1,4 @@
-#version 460
+#version 450
 
 layout (location = 0) in vec3 aPosition;
 layout (location = 1) in vec2 aTexCoord;
@@ -7,9 +7,9 @@ layout (location = 3) in vec4 aTangent;
 //layout (location = 4) in vec3 aBitangent;
 
 //layout (location = 0) out vec3 outPosition;
-layout (location = 0) out vec2 outTexCoord;
+layout (location = 0) out vec2 v_texCoord;
 //layout (location = 1) out vec3 outNormal;
-layout (location = 1) out mat3 outTBN;
+layout (location = 1) out mat3 v_TBN;
 //layout (location = 2) out vec4 outTangent;
 //layout (location = 3) out vec3 outBitangent;
 
@@ -28,7 +28,7 @@ void main() {
     //gl_Position.z *= gl_Position.w;
 
     //outPosition = gloablPos.xyz;
-    outTexCoord = aTexCoord;
+    v_texCoord = aTexCoord;
     //outNormal = normalize(mat3(u_model.normalMatrix) * aNormal);
     //mat3 normalMatrix = transpose(inverse(mat3(u_model.model)));
     vec3 T = normalize(mat3(u_model.normalMatrix) * aTangent.xyz);
@@ -41,7 +41,7 @@ void main() {
     //outTangent = T;
     //outBitangent = B;
 
-    outTBN = mat3(T, B, N);
+    v_TBN = mat3(T, B, N);
     //outNormal = normalize(mat3(u_model.normalMatrix) * aNormal);
     //outDepth = gl_Position.z / gl_Position.w;
     //outTangent = T;

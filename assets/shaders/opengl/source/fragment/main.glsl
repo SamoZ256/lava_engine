@@ -1,32 +1,32 @@
-#version 460
+#version 410
 
-layout(binding = 0, std140) uniform LIGHT
+layout(std140) uniform LIGHT
 {
     vec4 color;
     vec3 direction;
 } u_light;
 
-layout(binding = 2, std140) uniform SHADOW
+layout(std140) uniform SHADOW
 {
     mat4 VPs[3];
 } u_shadow;
 
-layout(binding = 1, std140) uniform VP
+layout(std140) uniform VP
 {
     mat4 invViewProj;
     vec3 cameraPos;
 } u_vp;
 
-layout(binding = 3) uniform sampler2DArrayShadow u_shadowMap;
-layout(binding = 0) uniform sampler2D u_depth;
-layout(binding = 1) uniform sampler2D u_normalRoughness;
-layout(binding = 2) uniform sampler2D u_albedoMetallic;
-layout(binding = 0) uniform samplerCube u_irradianceMap;
-layout(binding = 1) uniform samplerCube u_prefilteredMap;
-layout(binding = 2) uniform sampler2D u_brdfLutMap;
-layout(binding = 3) uniform sampler2D u_ssaoTex;
+uniform sampler2DArrayShadow u_shadowMap;
+uniform sampler2D u_depth;
+uniform sampler2D u_normalRoughness;
+uniform sampler2D u_albedoMetallic;
+uniform samplerCube u_irradianceMap;
+uniform samplerCube u_prefilteredMap;
+uniform sampler2D u_brdfLutMap;
+uniform sampler2D u_ssaoTex;
 
-layout(location = 0) in vec2 inTexCoord;
+layout(location = 0) in vec2 v_texCoord;
 layout(location = 0) out vec4 FragColor;
 
 vec3 reconstructPosFromDepth(mat4 invViewProj, vec2 texCoord, float depth)
@@ -179,15 +179,15 @@ float getVisibility(vec3 position, vec3 normal)
 
 void main()
 {
-    float depth = texture(u_depth, inTexCoord).x;
+    float depth = texture(u_depth, v_texCoord).x;
     mat4 param = u_vp.invViewProj;
-    vec2 param_1 = inTexCoord;
+    vec2 param_1 = v_texCoord;
     float param_2 = depth;
     vec3 position = reconstructPosFromDepth(param, param_1, param_2);
-    vec4 normalRoughness = texture(u_normalRoughness, inTexCoord);
+    vec4 normalRoughness = texture(u_normalRoughness, v_texCoord);
     vec3 normal = normalRoughness.xyz;
     float roughness = normalRoughness.w;
-    vec4 albedoMetallic = texture(u_albedoMetallic, inTexCoord);
+    vec4 albedoMetallic = texture(u_albedoMetallic, v_texCoord);
     vec3 albedo = albedoMetallic.xyz;
     float metallic = albedoMetallic.w;
     vec3 posToCamera = u_vp.cameraPos - position;
@@ -216,7 +216,7 @@ void main()
     vec3 prefilteredColor = textureLod(u_prefilteredMap, R, roughness * 4.0).xyz;
     vec2 brdf = texture(u_brdfLutMap, vec2(max(dot(normal, viewDir), 0.0), roughness)).xy;
     vec3 specular = prefilteredColor * ((kS * brdf.x) + vec3(brdf.y));
-    vec3 ambient = ((kD * diffuse) + specular) * texture(u_ssaoTex, inTexCoord).x;
+    vec3 ambient = ((kD * diffuse) + specular) * texture(u_ssaoTex, v_texCoord).x;
     result += ambient;
     FragColor = vec4(result, 1.0);
 }

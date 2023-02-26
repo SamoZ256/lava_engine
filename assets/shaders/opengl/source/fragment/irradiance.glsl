@@ -1,19 +1,19 @@
-#version 460
+#version 410
 
-layout(binding = 0, std140) uniform VP
+layout(std140) uniform VP
 {
     mat4 viewProj;
     int layerIndex;
 } u_vp;
 
-layout(binding = 1) uniform samplerCube environmentMap;
+uniform samplerCube environmentMap;
 
-layout(location = 0) in vec2 inTexCoord;
+layout(location = 0) in vec2 v_texCoord;
 layout(location = 0) out vec4 FragColor;
 
 void main()
 {
-    vec4 position = u_vp.viewProj * vec4((inTexCoord * 2.0) - vec2(1.0), 1.0, 1.0);
+    vec4 position = u_vp.viewProj * vec4((v_texCoord * 2.0) - vec2(1.0), 1.0, 1.0);
     if (abs(position.y) == 1.0)
     {
         position.x = -position.x;

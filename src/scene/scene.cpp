@@ -145,12 +145,9 @@ void Scene::loadEntity(entt::entity entity, nh::json& savedEntity) {
             lv::MeshComponent& meshComponent = editorRegistry.emplace<lv::MeshComponent>(entity, deferredLayout);
             auto& component = savedEntity[MESH_COMPONENT_NAME];
 
-            std::thread* thread = new std::thread([&](){
-                std::string vertDataFilename = component["vertDataFilename"];
-                std::string indDataFilename = component["indDataFilename"];
-                meshComponent.loadFromFile(0, vertDataFilename.c_str(), indDataFilename.c_str());
-            });
-            thread->join(); //TODO: make this multithreaded
+            std::string vertDataFilename = component["vertDataFilename"];
+            std::string indDataFilename = component["indDataFilename"];
+            meshComponent.loadFromFile(0, vertDataFilename.c_str(), indDataFilename.c_str());
 
             for (uint16_t texIndex = 0; texIndex < LV_MESH_TEXTURE_COUNT; texIndex++) {
                 std::string texIndexStr = std::to_string(texIndex);

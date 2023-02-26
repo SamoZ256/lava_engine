@@ -1,12 +1,12 @@
-#version 460
+#version 410
 
-layout(binding = 0) uniform samplerCube environmentMap;
+uniform samplerCube environmentMap;
 
 layout(location = 0) out vec4 FragColor;
-layout(location = 0) in vec3 inTexCoord;
+layout(location = 0) in vec3 v_texCoord;
 
 void main()
 {
-    FragColor = texture(environmentMap, inTexCoord);
+    FragColor = texture(environmentMap, v_texCoord);
 }
 

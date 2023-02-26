@@ -28,6 +28,7 @@ endif ()
 
 option(BACKEND_VULKAN "Build using vulkan backend" OFF)
 option(BACKEND_METAL "Build using metal backend" OFF)
+option(BACKEND_OPENGL "Build using opengl backend" OFF)
 
 set(BACKEND)
 
@@ -42,8 +43,6 @@ if (BACKEND_VULKAN)
         "external/vma"
     )
 elseif (BACKEND_METAL)
-    message("Building using metal backend")
-
     set(BACKEND metal)
 
     add_compile_definitions(
@@ -52,6 +51,16 @@ elseif (BACKEND_METAL)
 
     include_directories(
         "external/metal-cpp/include"
+    )
+elseif (BACKEND_OPENGL)
+    set(BACKEND opengl)
+
+    add_compile_definitions(
+        LV_BACKEND_OPENGL
+    )
+
+    include_directories(
+        "external/glad/include"
     )
 endif ()
 
@@ -96,7 +105,7 @@ include_directories(
 find_library (
     NFD_LIB
     NAMES nfd libnfd
-    HINTS "/Users/samuliak/Documents/nativefiledialog/src/include"
+    HINTS "/Users/samuliak/Documents/nativefiledialog/src"
     NO_DEFAULT_PATH
 )
 
@@ -120,7 +129,7 @@ find_library (
 find_library (
     LAVA_UTILS_LIB
     NAMES lavautils liblavautils
-    HINTS "/Users/samuliak/Documents/lava_utils/lib/vulkan"
+    HINTS "/Users/samuliak/Documents/lava_utils/lib/${BACKEND}"
     NO_DEFAULT_PATH
 )
 
@@ -190,6 +199,12 @@ elseif (BACKEND_METAL)
 
     target_link_libraries(${PROJECT_NAME} PUBLIC
         ${METAL_LIB}
+    )
+elseif (BACKEND_OPENGL)
+    set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "mainGL")
+
+    target_sources(${PROJECT_NAME} PRIVATE
+        "external/imgui/used_backends/imgui_impl_opengl3.cpp"
     )
 endif ()
 

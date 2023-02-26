@@ -10,7 +10,7 @@ struct main0_out
 
 struct main0_in
 {
-    float2 inTexCoord [[user(locn0)]];
+    float2 v_texCoord [[user(locn0)]];
 };
 
 fragment main0_out main0(main0_in in [[stage_in]], texture2d<float> u_tex [[texture(0)]], sampler u_texSmplr [[sampler(0)]])
@@ -18,14 +18,14 @@ fragment main0_out main0(main0_in in [[stage_in]], texture2d<float> u_tex [[text
     main0_out out = {};
     int n = 0;
     float2 texelSize = float2(1.0) / float2(int2(u_tex.get_width(), u_tex.get_height()));
-    float initValue = u_tex.sample(u_texSmplr, in.inTexCoord).x;
+    float initValue = u_tex.sample(u_texSmplr, in.v_texCoord).x;
     float result = initValue;
     for (int x = -2; x <= 2; x++)
     {
         for (int y = -2; y <= 2; y++)
         {
             float2 offset = float2(float(x), float(y)) * texelSize;
-            float value = u_tex.sample(u_texSmplr, (in.inTexCoord + offset)).x;
+            float value = u_tex.sample(u_texSmplr, (in.v_texCoord + offset)).x;
             result += value;
             n++;
         }

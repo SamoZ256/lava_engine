@@ -10,13 +10,13 @@ struct main0_out
 
 struct main0_in
 {
-    float3 inTexCoord [[user(locn0)]];
+    float3 v_texCoord [[user(locn0)]];
 };
 
 fragment main0_out main0(main0_in in [[stage_in]], texturecube<float> environmentMap [[texture(0)]], sampler environmentMapSmplr [[sampler(0)]])
 {
     main0_out out = {};
-    out.FragColor = environmentMap.sample(environmentMapSmplr, in.inTexCoord);
+    out.FragColor = environmentMap.sample(environmentMapSmplr, in.v_texCoord);
     return out;
 }
 

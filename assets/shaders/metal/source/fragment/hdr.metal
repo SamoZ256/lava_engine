@@ -12,7 +12,7 @@ struct main0_out
 
 struct main0_in
 {
-    float2 inTexCoord [[user(locn0)]];
+    float2 v_texCoord [[user(locn0)]];
 };
 
 static inline __attribute__((always_inline))
@@ -60,10 +60,10 @@ float3 fxaa(thread const float2& fragCoord, thread const float2& resolution, tex
 fragment main0_out main0(main0_in in [[stage_in]], texture2d<float> u_colorTex [[texture(0)]], texture2d<float> u_bloomTex [[texture(1)]], sampler u_colorTexSmplr [[sampler(0)]], sampler u_bloomTexSmplr [[sampler(1)]])
 {
     main0_out out = {};
-    float2 param = in.inTexCoord * float2(1920.0, 1080.0);
+    float2 param = in.v_texCoord * float2(1920.0, 1080.0);
     float2 param_1 = float2(1920.0, 1080.0);
     float3 hdrColor = fxaa(param, param_1, u_colorTex, u_colorTexSmplr);
-    hdrColor = mix(hdrColor, u_bloomTex.sample(u_bloomTexSmplr, in.inTexCoord).xyz, float3(0.039999999105930328369140625));
+    hdrColor = mix(hdrColor, u_bloomTex.sample(u_bloomTexSmplr, in.v_texCoord).xyz, float3(0.039999999105930328369140625));
     float3 mapped = float3(1.0) - exp((-hdrColor) * 1.0);
     out.FragColor = float4(mapped, 1.0);
     return out;

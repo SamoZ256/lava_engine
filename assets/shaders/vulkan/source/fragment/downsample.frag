@@ -1,8 +1,8 @@
-#version 460
+#version 450
 
 layout (location = 0) out vec3 FragColor;
 
-layout (location = 0) in vec2 inTexCoord;
+layout (location = 0) in vec2 v_texCoord;
 
 // This shader performs downsampling on a texture,
 // as taken from Call Of Duty method, presented at ACM Siggraph 2014.
@@ -27,22 +27,22 @@ void main() {
     // - l - m -
     // g - h - i
     // === ('e' is the current texel) ===
-    vec3 a = texture(srcTexture, vec2(inTexCoord.x - 2*x, inTexCoord.y + 2*y)).rgb;
-    vec3 b = texture(srcTexture, vec2(inTexCoord.x,       inTexCoord.y + 2*y)).rgb;
-    vec3 c = texture(srcTexture, vec2(inTexCoord.x + 2*x, inTexCoord.y + 2*y)).rgb;
+    vec3 a = texture(srcTexture, vec2(v_texCoord.x - 2*x, v_texCoord.y + 2*y)).rgb;
+    vec3 b = texture(srcTexture, vec2(v_texCoord.x,       v_texCoord.y + 2*y)).rgb;
+    vec3 c = texture(srcTexture, vec2(v_texCoord.x + 2*x, v_texCoord.y + 2*y)).rgb;
 
-    vec3 d = texture(srcTexture, vec2(inTexCoord.x - 2*x, inTexCoord.y)).rgb;
-    vec3 e = texture(srcTexture, vec2(inTexCoord.x,       inTexCoord.y)).rgb;
-    vec3 f = texture(srcTexture, vec2(inTexCoord.x + 2*x, inTexCoord.y)).rgb;
+    vec3 d = texture(srcTexture, vec2(v_texCoord.x - 2*x, v_texCoord.y)).rgb;
+    vec3 e = texture(srcTexture, vec2(v_texCoord.x,       v_texCoord.y)).rgb;
+    vec3 f = texture(srcTexture, vec2(v_texCoord.x + 2*x, v_texCoord.y)).rgb;
 
-    vec3 g = texture(srcTexture, vec2(inTexCoord.x - 2*x, inTexCoord.y - 2*y)).rgb;
-    vec3 h = texture(srcTexture, vec2(inTexCoord.x,       inTexCoord.y - 2*y)).rgb;
-    vec3 i = texture(srcTexture, vec2(inTexCoord.x + 2*x, inTexCoord.y - 2*y)).rgb;
+    vec3 g = texture(srcTexture, vec2(v_texCoord.x - 2*x, v_texCoord.y - 2*y)).rgb;
+    vec3 h = texture(srcTexture, vec2(v_texCoord.x,       v_texCoord.y - 2*y)).rgb;
+    vec3 i = texture(srcTexture, vec2(v_texCoord.x + 2*x, v_texCoord.y - 2*y)).rgb;
 
-    vec3 j = texture(srcTexture, vec2(inTexCoord.x - x, inTexCoord.y + y)).rgb;
-    vec3 k = texture(srcTexture, vec2(inTexCoord.x + x, inTexCoord.y + y)).rgb;
-    vec3 l = texture(srcTexture, vec2(inTexCoord.x - x, inTexCoord.y - y)).rgb;
-    vec3 m = texture(srcTexture, vec2(inTexCoord.x + x, inTexCoord.y - y)).rgb;
+    vec3 j = texture(srcTexture, vec2(v_texCoord.x - x, v_texCoord.y + y)).rgb;
+    vec3 k = texture(srcTexture, vec2(v_texCoord.x + x, v_texCoord.y + y)).rgb;
+    vec3 l = texture(srcTexture, vec2(v_texCoord.x - x, v_texCoord.y - y)).rgb;
+    vec3 m = texture(srcTexture, vec2(v_texCoord.x + x, v_texCoord.y - y)).rgb;
 
     // Apply weighted distribution:
     // 0.5 + 0.125 + 0.125 + 0.125 + 0.125 = 1

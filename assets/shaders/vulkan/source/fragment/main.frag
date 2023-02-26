@@ -1,10 +1,10 @@
-#version 460
+#version 450
 
 #include "../Utility/utility.glsl"
 
 layout (location = 0) out vec4 FragColor;
 
-layout (location = 0) in vec2 inTexCoord;
+layout (location = 0) in vec2 v_texCoord;
 
 #define CASCADE_COUNT 3
 
@@ -210,14 +210,14 @@ float getVisibility(vec3 position, vec3 normal) {
 
 void main() {
     //Unpacking G-Buffers
-	float depth = texture(u_depth, inTexCoord).r;
-    vec3 position = reconstructPosFromDepth(u_vp.invViewProj, inTexCoord, depth);
+	float depth = texture(u_depth, v_texCoord).r;
+    vec3 position = reconstructPosFromDepth(u_vp.invViewProj, v_texCoord, depth);
 
-	vec4 normalRoughness = texture(u_normalRoughness, inTexCoord);
+	vec4 normalRoughness = texture(u_normalRoughness, v_texCoord);
 	vec3 normal = normalRoughness.xyz;
 	float roughness = normalRoughness.a;
 
-	vec4 albedoMetallic = texture(u_albedoMetallic, inTexCoord);
+	vec4 albedoMetallic = texture(u_albedoMetallic, v_texCoord);
 	vec3 albedo = albedoMetallic.rgb;
 	float metallic = albedoMetallic.a;
 
@@ -248,7 +248,7 @@ void main() {
     vec2 brdf  = texture(u_brdfLutMap, vec2(max(dot(normal, viewDir), 0.0), roughness)).rg;
     vec3 specular = prefilteredColor * (kS * brdf.x + brdf.y);
 
-    vec3 ambient = (kD * diffuse + specular) * texture(u_ssaoTex, inTexCoord).r;
+    vec3 ambient = (kD * diffuse + specular) * texture(u_ssaoTex, v_texCoord).r;
 
     result += ambient;
 

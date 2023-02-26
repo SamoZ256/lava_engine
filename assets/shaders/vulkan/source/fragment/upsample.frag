@@ -1,8 +1,8 @@
-#version 460
+#version 450
 
 layout (location = 0) out vec3 FragColor;
 
-layout (location = 0) in vec2 inTexCoord;
+layout (location = 0) in vec2 v_texCoord;
 
 // This shader performs upsampling on a texture,
 // as taken from Call Of Duty method, presented at ACM Siggraph 2014.
@@ -26,17 +26,17 @@ void main()
     // d - e - f
     // g - h - i
     // === ('e' is the current texel) ===
-    vec3 a = texture(srcTexture, vec2(inTexCoord.x - x, inTexCoord.y + y)).rgb;
-    vec3 b = texture(srcTexture, vec2(inTexCoord.x,     inTexCoord.y + y)).rgb;
-    vec3 c = texture(srcTexture, vec2(inTexCoord.x + x, inTexCoord.y + y)).rgb;
+    vec3 a = texture(srcTexture, vec2(v_texCoord.x - x, v_texCoord.y + y)).rgb;
+    vec3 b = texture(srcTexture, vec2(v_texCoord.x,     v_texCoord.y + y)).rgb;
+    vec3 c = texture(srcTexture, vec2(v_texCoord.x + x, v_texCoord.y + y)).rgb;
 
-    vec3 d = texture(srcTexture, vec2(inTexCoord.x - x, inTexCoord.y)).rgb;
-    vec3 e = texture(srcTexture, vec2(inTexCoord.x,     inTexCoord.y)).rgb;
-    vec3 f = texture(srcTexture, vec2(inTexCoord.x + x, inTexCoord.y)).rgb;
+    vec3 d = texture(srcTexture, vec2(v_texCoord.x - x, v_texCoord.y)).rgb;
+    vec3 e = texture(srcTexture, vec2(v_texCoord.x,     v_texCoord.y)).rgb;
+    vec3 f = texture(srcTexture, vec2(v_texCoord.x + x, v_texCoord.y)).rgb;
 
-    vec3 g = texture(srcTexture, vec2(inTexCoord.x - x, inTexCoord.y - y)).rgb;
-    vec3 h = texture(srcTexture, vec2(inTexCoord.x,     inTexCoord.y - y)).rgb;
-    vec3 i = texture(srcTexture, vec2(inTexCoord.x + x, inTexCoord.y - y)).rgb;
+    vec3 g = texture(srcTexture, vec2(v_texCoord.x - x, v_texCoord.y - y)).rgb;
+    vec3 h = texture(srcTexture, vec2(v_texCoord.x,     v_texCoord.y - y)).rgb;
+    vec3 i = texture(srcTexture, vec2(v_texCoord.x + x, v_texCoord.y - y)).rgb;
 
     // Apply weighted distribution, by using a 3x3 tent filter:
     //  1   | 1 2 1 |

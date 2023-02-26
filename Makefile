@@ -5,3 +5,7 @@ bvulkan:
 bmetal:
 	cmake . -DBACKEND_METAL=ON -B build/metal
 	make -C build/metal
+
+bopengl:
+	cmake . -DBACKEND_OPENGL=ON -B build/opengl
+	make -C build/opengl

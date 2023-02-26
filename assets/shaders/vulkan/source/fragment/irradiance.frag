@@ -1,8 +1,8 @@
-#version 460
+#version 450
 
 layout (location = 0) out vec4 FragColor;
 
-layout (location = 0) in vec2 inTexCoord;
+layout (location = 0) in vec2 v_texCoord;
 
 layout (set = 0, binding = 0) uniform VP {
 	mat4 viewProj;
@@ -15,7 +15,7 @@ const float PI = 3.14159265359;
 
 void main() {
 	// the sample direction equals the hemisphere's orientation
-	vec4 position = u_vp.viewProj * vec4(inTexCoord * 2.0 - 1.0, 1.0, 1.0);
+	vec4 position = u_vp.viewProj * vec4(v_texCoord * 2.0 - 1.0, 1.0, 1.0);
 	if (abs(position.y) == 1.0)  {
 		position.x = -position.x;
 		position.z = -position.z;

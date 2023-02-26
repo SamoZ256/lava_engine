@@ -1,16 +1,14 @@
-#version 460
+#version 410
 
-layout(binding = 0, std140) uniform VP
+layout(std140) uniform VP
 {
     mat4 viewProj;
 } u_vp;
 
-struct MODEL
+layout(std140) uniform MODEL
 {
     vec3 position;
-};
-
-uniform MODEL u_model;
+} u_model;
 
 layout(location = 0) in vec3 aPosition;
 

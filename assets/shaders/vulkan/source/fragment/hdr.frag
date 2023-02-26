@@ -1,8 +1,8 @@
-#version 460
+#version 450
 
 layout (location = 0) out vec4 FragColor;
 
-layout (location = 0) in vec2 inTexCoord;
+layout (location = 0) in vec2 v_texCoord;
 
 layout (set = 0, binding = 0) uniform sampler2D u_colorTex;
 layout (set = 0, binding = 1) uniform sampler2D u_bloomTex;
@@ -148,10 +148,10 @@ vec3 fxaa(vec2 fragCoord, vec2 resolution) {
 
 void main() {
     /*
-    float depth = texture(u_depth, inTexCoord).x;
-    vec3 normal = texture(u_normalRoughness, inTexCoord).xyz;
+    float depth = texture(u_depth, v_texCoord).x;
+    vec3 normal = texture(u_normalRoughness, v_texCoord).xyz;
 
-    vec3 position = reconstructPosFromDepth(inverse(u_vp.projection * u_vp.view), inTexCoord, depth);
+    vec3 position = reconstructPosFromDepth(inverse(u_vp.projection * u_vp.view), v_texCoord, depth);
 
     vec3 reflected = normalize(reflect(normalize(position - u_vp.cameraPos), normal));
 
@@ -163,11 +163,11 @@ void main() {
     */
 
     //vec3 hdrColor;
-    //if (inTexCoord.x < 0.5)
-    vec3 hdrColor = fxaa(inTexCoord * vec2(1920, 1080), vec2(1920, 1080));//texture(u_colorTex, inTexCoord).rgb;
-    hdrColor = mix(hdrColor, texture(u_bloomTex, inTexCoord).rgb, 0.04);
+    //if (v_texCoord.x < 0.5)
+    vec3 hdrColor = fxaa(v_texCoord * vec2(1920, 1080), vec2(1920, 1080));//texture(u_colorTex, v_texCoord).rgb;
+    hdrColor = mix(hdrColor, texture(u_bloomTex, v_texCoord).rgb, 0.04);
     //else
-    //    hdrColor = texture(u_colorTex, inTexCoord).rgb;
+    //    hdrColor = texture(u_colorTex, v_texCoord).rgb;
     vec3 mapped = vec3(1.0) - exp(-hdrColor * exposure);
     
     FragColor = vec4(mapped, 1.0);

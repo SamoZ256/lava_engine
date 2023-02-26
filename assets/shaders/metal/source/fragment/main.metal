@@ -29,7 +29,7 @@ struct main0_out
 
 struct main0_in
 {
-    float2 inTexCoord [[user(locn0)]];
+    float2 v_texCoord [[user(locn0)]];
 };
 
 static inline __attribute__((always_inline))
@@ -190,15 +190,15 @@ float getVisibility(thread const float3& position, thread const float3& normal, 
 fragment main0_out main0(main0_in in [[stage_in]], constant LIGHT& u_light [[buffer(0)]], constant SHADOW& u_shadow [[buffer(1)]], constant VP& u_vp [[buffer(2)]], depth2d_array<float> u_shadowMap [[texture(0)]], texture2d<float> u_depth [[texture(1)]], texture2d<float> u_normalRoughness [[texture(2)]], texture2d<float> u_albedoMetallic [[texture(3)]], texturecube<float> u_irradianceMap [[texture(4)]], texturecube<float> u_prefilteredMap [[texture(5)]], texture2d<float> u_brdfLutMap [[texture(6)]], texture2d<float> u_ssaoTex [[texture(7)]], sampler u_shadowMapSmplr [[sampler(0)]], sampler u_depthSmplr [[sampler(1)]], sampler u_normalRoughnessSmplr [[sampler(2)]], sampler u_albedoMetallicSmplr [[sampler(3)]], sampler u_irradianceMapSmplr [[sampler(4)]], sampler u_prefilteredMapSmplr [[sampler(5)]], sampler u_brdfLutMapSmplr [[sampler(6)]], sampler u_ssaoTexSmplr [[sampler(7)]])
 {
     main0_out out = {};
-    float depth = u_depth.sample(u_depthSmplr, in.inTexCoord).x;
+    float depth = u_depth.sample(u_depthSmplr, in.v_texCoord).x;
     float4x4 param = u_vp.invViewProj;
-    float2 param_1 = in.inTexCoord;
+    float2 param_1 = in.v_texCoord;
     float param_2 = depth;
     float3 position = reconstructPosFromDepth(param, param_1, param_2);
-    float4 normalRoughness = u_normalRoughness.sample(u_normalRoughnessSmplr, in.inTexCoord);
+    float4 normalRoughness = u_normalRoughness.sample(u_normalRoughnessSmplr, in.v_texCoord);
     float3 normal = normalRoughness.xyz;
     float roughness = normalRoughness.w;
-    float4 albedoMetallic = u_albedoMetallic.sample(u_albedoMetallicSmplr, in.inTexCoord);
+    float4 albedoMetallic = u_albedoMetallic.sample(u_albedoMetallicSmplr, in.v_texCoord);
     float3 albedo = albedoMetallic.xyz;
     float metallic = albedoMetallic.w;
     float3 posToCamera = u_vp.cameraPos - position;
@@ -227,7 +227,7 @@ fragment main0_out main0(main0_in in [[stage_in]], constant LIGHT& u_light [[buf
     float3 prefilteredColor = u_prefilteredMap.sample(u_prefilteredMapSmplr, R, level(roughness * 4.0)).xyz;
     float2 brdf = u_brdfLutMap.sample(u_brdfLutMapSmplr, float2(fast::max(dot(normal, viewDir), 0.0), roughness)).xy;
     float3 specular = prefilteredColor * ((kS * brdf.x) + float3(brdf.y));
-    float3 ambient = ((kD * diffuse) + specular) * u_ssaoTex.sample(u_ssaoTexSmplr, in.inTexCoord).x;
+    float3 ambient = ((kD * diffuse) + specular) * u_ssaoTex.sample(u_ssaoTexSmplr, in.v_texCoord).x;
     result += ambient;
     out.FragColor = float4(result, 1.0);
     return out;

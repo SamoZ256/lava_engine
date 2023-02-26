@@ -1,8 +1,8 @@
-#version 460
+#version 410
 
 const vec2 _20[3] = vec2[](vec2(0.0, 1.0), vec2(0.0, -1.0), vec2(2.0, 1.0));
 
-layout(binding = 0, std140) uniform VP
+layout(std140) uniform VP
 {
     mat4 viewProj;
     int layerIndex;

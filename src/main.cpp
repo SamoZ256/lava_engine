@@ -8,6 +8,8 @@
 #define LVND_BACKEND_VULKAN
 #elif defined(LV_BACKEND_METAL)
 #define LVND_BACKEND_METAL
+#elif defined(LV_BACKEND_OPENGL)
+#define LVND_BACKEND_OPENGL
 #endif
 #include "lvnd/lvnd.h"
 
@@ -36,6 +38,8 @@
 #define GET_SHADER_FILENAME(name) "assets/shaders/vulkan/compiled/" name ".spv"
 #elif defined(LV_BACKEND_METAL)
 #define GET_SHADER_FILENAME(name) "assets/shaders/metal/compiled/" name ".metallib"
+#elif defined(LV_BACKEND_OPENGL)
+#define GET_SHADER_FILENAME(name) "assets/shaders/opengl/source/" name ".glsl"
 #endif
 
 //Callbacks
@@ -294,6 +298,8 @@ int main() {
     lvndInit();
 
     //srand((unsigned)time(0));
+    lvndSetWindowParamValue(LVND_WINDOW_PARAM_OPENGL_VERSION_MAJOR, 4);
+    lvndSetWindowParamValue(LVND_WINDOW_PARAM_OPENGL_VERSION_MINOR, 1);
     LvndWindow* window = lvndCreateWindow(SRC_WIDTH, SRC_HEIGHT, SRC_TITLE);
 
     //Callbacks
@@ -548,21 +554,21 @@ int main() {
     //Deferred render pass
 #pragma region DEFERRED_RENDER_PASS
     DeferredRenderPass deferredRenderPass;
-    deferredRenderPass.normalRoughnessImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    deferredRenderPass.normalRoughnessImage.usage = LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     deferredRenderPass.normalRoughnessImage.format = LV_FORMAT_R16G16B16A16_SNORM;
     deferredRenderPass.normalRoughnessImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
     deferredRenderPass.normalRoughnessImage.init(SRC_WIDTH, SRC_HEIGHT);
     deferredRenderPass.normalRoughnessImageView.init(&deferredRenderPass.normalRoughnessImage);
     deferredRenderPass.normalRoughnessSampler.init();
 
-    deferredRenderPass.albedoMetallicImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    deferredRenderPass.albedoMetallicImage.usage = LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     deferredRenderPass.albedoMetallicImage.format = LV_FORMAT_R16G16B16A16_UNORM;
     deferredRenderPass.albedoMetallicImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
     deferredRenderPass.albedoMetallicImage.init(SRC_WIDTH, SRC_HEIGHT);
     deferredRenderPass.albedoMetallicImageView.init(&deferredRenderPass.albedoMetallicImage);
     deferredRenderPass.albedoMetallicSampler.init();
 
-    deferredRenderPass.depthImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | LV_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    deferredRenderPass.depthImage.usage = LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | LV_IMAGE_USAGE_TRANSFER_SRC_BIT;
     deferredRenderPass.depthImage.format = swapChain.depthFormat;
     deferredRenderPass.depthImage.aspectMask = LV_IMAGE_ASPECT_DEPTH_BIT;
     deferredRenderPass.depthImage.init(SRC_WIDTH, SRC_HEIGHT);
@@ -790,7 +796,7 @@ int main() {
 #pragma region MAIN_RENDER_PASS
     MainRenderPass mainRenderPass{};
     mainRenderPass.colorImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    mainRenderPass.colorImage.format = LV_FORMAT_R32G32B32A32_SFLOAT;
+    mainRenderPass.colorImage.format = LV_FORMAT_R16G16B16A16_UNORM; //LV_FORMAT_R32G32B32A32_SFLOAT
     mainRenderPass.colorImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
     mainRenderPass.colorImage.init(SRC_WIDTH, SRC_HEIGHT);
     mainRenderPass.colorImageView.init(&mainRenderPass.colorImage);
@@ -813,7 +819,7 @@ int main() {
         .index = 0,
         .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
     });
-
+    
     mainRenderPass.renderPass.setDepthAttachment({
         .format = deferredRenderPass.depthImage.format,
         .index = 1,
@@ -830,10 +836,12 @@ int main() {
         .index = 0
     });
 
+#ifndef LV_BACKEND_OPENGL
     mainRenderPass.framebuffer.setDepthAttachment({
         .imageView = &deferredRenderPass.depthImageView,
         .index = 1
     });
+#endif
 
     mainRenderPass.framebuffer.init(&mainRenderPass.renderPass);
     mainRenderPass.commandBuffer.init();
@@ -948,6 +956,7 @@ int main() {
 
     //Graphics pipelines
 
+#ifndef LV_BACKEND_OPENGL
     // *************** Equirectangular to cubemap shader ***************
 #pragma region EQUIRECTANGULAR_TO_CUBE_SHADER
     //Vertex
@@ -1037,6 +1046,7 @@ int main() {
     lv::GraphicsPipeline prefilteredGraphicsPipeline;
     prefilteredGraphicsPipeline.init(prefilteredGraphicsPipelineCreateInfo);
 #pragma endregion PREFILTERED_SHADER
+#endif
 
     // *************** Deferred shader ***************
 #pragma region DEFERRED_SHADER
@@ -1394,9 +1404,6 @@ int main() {
 	hdrGraphicsPipelineCreateInfo.pipelineLayout = &hdrLayout;
 	hdrGraphicsPipelineCreateInfo.renderPass = &hdrRenderPass.renderPass;
 
-	//hdrGraphicsPipelineCreateInfo.vertexBindingDescriptions = MainVertex::getBindingDescriptions();
-	//hdrGraphicsPipelineCreateInfo.vertexAttributeDescriptions = MainVertex::getAttributeDescriptions();
-
 	lv::GraphicsPipeline hdrGraphicsPipeline;
     hdrGraphicsPipeline.init(hdrGraphicsPipelineCreateInfo);
 #pragma endregion HDR_SHADER
@@ -1493,13 +1500,42 @@ int main() {
     lv::Sampler aoNoiseSampler;
     aoNoiseSampler.addressMode = LV_SAMPLER_ADDRESS_MODE_REPEAT;
     aoNoiseSampler.init();
+    std::cout << "Test 1 passed" << std::endl;
 
     //Skylight
     lv::Skylight skylight(0);
+#ifdef LV_BACKEND_OPENGL
+    skylight.environmentMapImage.frameCount = 1;
+    skylight.environmentMapImage.format = skylight.format;
+    skylight.environmentMapImage.usage = LV_IMAGE_USAGE_SAMPLED_BIT;
+    skylight.environmentMapImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
+    skylight.environmentMapImage.viewType = LV_IMAGE_VIEW_TYPE_CUBE;
+    skylight.environmentMapImage.layerCount = 6;
+    skylight.environmentMapImage.init(SKYLIGHT_IMAGE_SIZE, SKYLIGHT_IMAGE_SIZE);
+    skylight.environmentMapImageView.init(&skylight.environmentMapImage);
+
+    skylight.irradianceMapImage.frameCount = 1;
+    skylight.irradianceMapImage.format = skylight.format;
+    skylight.irradianceMapImage.usage = LV_IMAGE_USAGE_SAMPLED_BIT;
+    skylight.irradianceMapImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
+    skylight.irradianceMapImage.viewType = LV_IMAGE_VIEW_TYPE_CUBE;
+    skylight.irradianceMapImage.layerCount = 6;
+    skylight.irradianceMapImage.init(SKYLIGHT_IMAGE_SIZE, SKYLIGHT_IMAGE_SIZE);
+    skylight.irradianceMapImageView.init(&skylight.irradianceMapImage);
+
+    skylight.prefilteredMapImage.frameCount = 1;
+    skylight.prefilteredMapImage.format = skylight.format;
+    skylight.prefilteredMapImage.usage = LV_IMAGE_USAGE_SAMPLED_BIT;
+    skylight.prefilteredMapImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
+    skylight.prefilteredMapImage.viewType = LV_IMAGE_VIEW_TYPE_CUBE;
+    skylight.prefilteredMapImage.layerCount = 6;
+    skylight.prefilteredMapImage.init(SKYLIGHT_IMAGE_SIZE, SKYLIGHT_IMAGE_SIZE);
+    skylight.prefilteredMapImageView.init(&skylight.prefilteredMapImage);
+#else
     skylight.load(0, "assets/skylight/canyon.hdr", equiToCubeGraphicsPipeline);
-    //return 0;
     skylight.createIrradianceMap(0, irradianceGraphicsPipeline);
     skylight.createPrefilteredMap(0, prefilteredGraphicsPipeline);
+#endif
 
     lv::Texture brdfLutTexture;
     brdfLutTexture.init("assets/textures/brdf_lut.png");
@@ -1636,8 +1672,10 @@ int main() {
     editor.createViewportSet(
 #ifdef LV_BACKEND_VULKAN
         hdrRenderPass.colorImageView.imageViews, hdrRenderPass.colorSampler.sampler
-#elif defined LV_BACKEND_METAL
+#elif defined(LV_BACKEND_METAL)
         hdrRenderPass.colorImage.images
+#elif defined(LV_BACKEND_OPENGL)
+        hdrRenderPass.colorImage.image
 #endif
     );
 
@@ -1825,8 +1863,10 @@ int main() {
 
         ssaoGraphicsPipeline.bind();
         halfMainViewport.bind();
+        std::cout << "SSAO render pass 1" << std::endl;
 
         ssaoDescriptorSet.bind();
+        std::cout << "SSAO render pass 2" << std::endl;
 
         PCSsaoVP pcSsaoVP{g_game->scene().camera->projection, g_game->scene().camera->view, glm::inverse(viewProj)};
         ssaoGraphicsPipeline.uploadPushConstants(&pcSsaoVP, 0);
@@ -1927,9 +1967,7 @@ int main() {
             upsampleGraphicsPipeline.bind();
             bloomRenderPass.viewports[i].bind();
 
-            std::cout << "Test 5.3 passed" << std::endl;
             upsampleDescriptorSets[i].bind();
-            std::cout << "Test 5.4 passed" << std::endl;
 
             swapChain.renderFullscreenTriangle();
 
@@ -1939,7 +1977,6 @@ int main() {
         bloomRenderPass.upsampleCommandBuffer.unbind();
 
         bloomRenderPass.upsampleCommandBuffer.submit();
-        std::cout << "Test 6 passed" << std::endl;
 
         //HDR render pass
         hdrRenderPass.commandBuffer.bind();
@@ -2035,10 +2072,12 @@ int main() {
     mainRenderPass.renderPass.destroy();
     mainRenderPass.framebuffer.destroy();
 
+#ifndef LV_BACKEND_OPENGL
     vertCubemapModule.destroy();
     fragEquiToCubeModule.destroy();
 
     fragIrradianceModule.destroy();
+#endif
 
     vertDeferredModule.destroy();
     fragDeferredModule.destroy();
@@ -2108,6 +2147,8 @@ int main() {
     lvndVulkanDestroyLayer(window);
 #elif defined(LV_BACKEND_METAL)
     lvndMetalDestroyLayer(window);
+#elif defined(LV_BACKEND_OPENGL)
+    lvndOpenGLDestroyContext(window);
 #endif
 
     lvndDestroyWindow(window);

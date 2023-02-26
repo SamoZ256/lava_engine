@@ -1,8 +1,8 @@
-#version 460
+#version 410
 
-layout(binding = 0) uniform sampler2D srcTexture;
+uniform sampler2D srcTexture;
 
-layout(location = 0) in vec2 inTexCoord;
+layout(location = 0) in vec2 v_texCoord;
 layout(location = 0) out vec3 FragColor;
 
 void main()
@@ -11,19 +11,19 @@ void main()
     vec2 srcTexelSize = vec2(1.0) / srcResolution;
     float x = srcTexelSize.x * 0.5;
     float y = srcTexelSize.y * 0.5;
-    vec3 a = texture(srcTexture, vec2(inTexCoord.x - (2.0 * x), inTexCoord.y + (2.0 * y))).xyz;
-    vec3 b = texture(srcTexture, vec2(inTexCoord.x, inTexCoord.y + (2.0 * y))).xyz;
-    vec3 c = texture(srcTexture, vec2(inTexCoord.x + (2.0 * x), inTexCoord.y + (2.0 * y))).xyz;
-    vec3 d = texture(srcTexture, vec2(inTexCoord.x - (2.0 * x), inTexCoord.y)).xyz;
-    vec3 e = texture(srcTexture, vec2(inTexCoord.x, inTexCoord.y)).xyz;
-    vec3 f = texture(srcTexture, vec2(inTexCoord.x + (2.0 * x), inTexCoord.y)).xyz;
-    vec3 g = texture(srcTexture, vec2(inTexCoord.x - (2.0 * x), inTexCoord.y - (2.0 * y))).xyz;
-    vec3 h = texture(srcTexture, vec2(inTexCoord.x, inTexCoord.y - (2.0 * y))).xyz;
-    vec3 i = texture(srcTexture, vec2(inTexCoord.x + (2.0 * x), inTexCoord.y - (2.0 * y))).xyz;
-    vec3 j = texture(srcTexture, vec2(inTexCoord.x - x, inTexCoord.y + y)).xyz;
-    vec3 k = texture(srcTexture, vec2(inTexCoord.x + x, inTexCoord.y + y)).xyz;
-    vec3 l = texture(srcTexture, vec2(inTexCoord.x - x, inTexCoord.y - y)).xyz;
-    vec3 m = texture(srcTexture, vec2(inTexCoord.x + x, inTexCoord.y - y)).xyz;
+    vec3 a = texture(srcTexture, vec2(v_texCoord.x - (2.0 * x), v_texCoord.y + (2.0 * y))).xyz;
+    vec3 b = texture(srcTexture, vec2(v_texCoord.x, v_texCoord.y + (2.0 * y))).xyz;
+    vec3 c = texture(srcTexture, vec2(v_texCoord.x + (2.0 * x), v_texCoord.y + (2.0 * y))).xyz;
+    vec3 d = texture(srcTexture, vec2(v_texCoord.x - (2.0 * x), v_texCoord.y)).xyz;
+    vec3 e = texture(srcTexture, vec2(v_texCoord.x, v_texCoord.y)).xyz;
+    vec3 f = texture(srcTexture, vec2(v_texCoord.x + (2.0 * x), v_texCoord.y)).xyz;
+    vec3 g = texture(srcTexture, vec2(v_texCoord.x - (2.0 * x), v_texCoord.y - (2.0 * y))).xyz;
+    vec3 h = texture(srcTexture, vec2(v_texCoord.x, v_texCoord.y - (2.0 * y))).xyz;
+    vec3 i = texture(srcTexture, vec2(v_texCoord.x + (2.0 * x), v_texCoord.y - (2.0 * y))).xyz;
+    vec3 j = texture(srcTexture, vec2(v_texCoord.x - x, v_texCoord.y + y)).xyz;
+    vec3 k = texture(srcTexture, vec2(v_texCoord.x + x, v_texCoord.y + y)).xyz;
+    vec3 l = texture(srcTexture, vec2(v_texCoord.x - x, v_texCoord.y - y)).xyz;
+    vec3 m = texture(srcTexture, vec2(v_texCoord.x + x, v_texCoord.y - y)).xyz;
     FragColor = e * 0.125;
     FragColor += ((((a + c) + g) + i) * 0.03125);
     FragColor += ((((b + d) + f) + h) * 0.0625);

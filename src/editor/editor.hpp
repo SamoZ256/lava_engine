@@ -4,8 +4,10 @@
 #include <imgui_impl_lvnd.h>
 #ifdef LV_BACKEND_VULKAN
 #include <imgui_impl_vulkan.h>
-#elif defined LV_BACKEND_METAL
+#elif defined(LV_BACKEND_METAL)
 #include <imgui_impl_metal.h>
+#elif defined(LV_BACKEND_OPENGL)
+#include <imgui_impl_opengl3.h>
 #endif
 //#include <ImGuiFileDialog.h>
 #include <imgui_stdlib.h>
@@ -63,8 +65,10 @@ public:
     //Descriptor sets
 #ifdef LV_BACKEND_VULKAN
     std::vector<VkDescriptorSet> viewportSets;
-#elif defined LV_BACKEND_METAL
+#elif defined(LV_BACKEND_METAL)
     std::vector<MTL::Texture*> viewportSets;
+#elif defined(LV_BACKEND_OPENGL)
+    GLuint viewportSet;
 #endif
 
     //NFD
@@ -89,7 +93,7 @@ public:
     VkDescriptorSet translateButtonSet;
     VkDescriptorSet rotateButtonSet;
     VkDescriptorSet scaleButtonSet;
-#elif defined LV_BACKEND_METAL
+#elif defined(LV_BACKEND_METAL)
     MTL::Texture* playButtonSet;
     MTL::Texture* stopButtonSet;
     MTL::Texture* folderSet;
@@ -97,6 +101,14 @@ public:
     MTL::Texture* translateButtonSet;
     MTL::Texture* rotateButtonSet;
     MTL::Texture* scaleButtonSet;
+#elif defined(LV_BACKEND_OPENGL)
+    GLuint playButtonSet;
+    GLuint stopButtonSet;
+    GLuint folderSet;
+    GLuint fileSet;
+    GLuint translateButtonSet;
+    GLuint rotateButtonSet;
+    GLuint scaleButtonSet;
 #endif
 
     Editor(LvndWindow* aWindow, lv::PipelineLayout& aDeferredLayout) : window(aWindow), deferredLayout(aDeferredLayout) {}
@@ -112,8 +124,10 @@ public:
     void createViewportSet(
 #ifdef LV_BACKEND_VULKAN
         std::vector<VkImageView>& viewportImageViews, VkSampler& viewportSampler
-#elif defined LV_BACKEND_METAL
+#elif defined(LV_BACKEND_METAL)
         std::vector<MTL::Texture*>& viewportImages
+#elif defined(LV_BACKEND_OPENGL)
+        GLuint viewportImage
 #endif
     );
 

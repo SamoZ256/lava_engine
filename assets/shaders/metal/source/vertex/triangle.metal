@@ -48,16 +48,16 @@ constant spvUnsafeArray<float2, 3> _20 = spvUnsafeArray<float2, 3>({ float2(0.0,
 
 struct main0_out
 {
-    float2 outTexCoord [[user(locn0)]];
+    float2 v_texCoord [[user(locn0)]];
     float4 gl_Position [[position]];
 };
 
 vertex main0_out main0(uint gl_VertexIndex [[vertex_id]])
 {
     main0_out out = {};
-    out.outTexCoord = _20[int(gl_VertexIndex)];
-    out.gl_Position = float4((out.outTexCoord * 2.0) - float2(1.0), 1.0, 1.0);
-    out.outTexCoord.y = 1.0 - out.outTexCoord.y;
+    out.v_texCoord = _20[int(gl_VertexIndex)];
+    out.gl_Position = float4((out.v_texCoord * 2.0) - float2(1.0), 1.0, 1.0);
+    out.v_texCoord.y = 1.0 - out.v_texCoord.y;
     return out;
 }
 

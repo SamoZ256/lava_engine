@@ -4,7 +4,7 @@
 
 layout (location = 0) out float FragColor;
 
-layout (location = 0) in vec2 inTexCoord;
+layout (location = 0) in vec2 v_texCoord;
 
 layout (constant_id = 0) const int aoType = 0;
 
@@ -61,7 +61,7 @@ const vec3 SSAO_KERNEL[SSAO_KERNEL_SIZE] = vec3[](
 //Position reconstruction
 /*
 vec3 reconstructPosFromDepth(in float depth) {
-    vec3 posInViewProj = vec3(inTexCoord.x * 2.0 - 1.0, (1.0 - inTexCoord.y) * 2.0 - 1.0, depth);
+    vec3 posInViewProj = vec3(v_texCoord.x * 2.0 - 1.0, (1.0 - v_texCoord.y) * 2.0 - 1.0, depth);
     vec4 position = inverse(u_vp.projection * u_vp.view) * vec4(posInViewProj, 1.0);
     position.xyz /= position.w;
 
@@ -75,17 +75,17 @@ float linearizeDepth(float depth, float zNear, float zFar) {
 
 float ssao()  {
 	// Get G-Buffer values
-    //vec4 positionDepth = texture(u_positionDepth, inTexCoord);
-    float depth = texture(u_depth, inTexCoord).r;
-	vec3 fragPos = reconstructPosFromDepth(u_vp.invViewProj, inTexCoord, depth);
+    //vec4 positionDepth = texture(u_positionDepth, v_texCoord);
+    float depth = texture(u_depth, v_texCoord).r;
+	vec3 fragPos = reconstructPosFromDepth(u_vp.invViewProj, v_texCoord, depth);
     //float linearDepth = (u_vp.view * vec4(fragPos, 1.0)).z;
-	vec3 normal = normalize(texture(u_normalRoughness, inTexCoord).xyz * 2.0 - 1.0);
+	vec3 normal = normalize(texture(u_normalRoughness, v_texCoord).xyz * 2.0 - 1.0);
 
 	// Get a random vector using a noise lookup
 	ivec2 texDim = textureSize(u_depth, 0); 
 	ivec2 noiseDim = textureSize(u_ssaoNoise, 0);
 
-	const vec2 noiseUV = vec2(float(texDim.x) / float(noiseDim.x), float(texDim.y) / (noiseDim.y)) * inTexCoord;
+	const vec2 noiseUV = vec2(float(texDim.x) / float(noiseDim.x), float(texDim.y) / (noiseDim.y)) * v_texCoord;
 	vec3 randomVec = texture(u_ssaoNoise, noiseUV).xyz;
 	
 	// Create TBN matrix
@@ -114,17 +114,17 @@ float ssao()  {
 
 		float rangeCheck = smoothstep(0.0, 1.0, SSAO_RADIUS / abs(sampleLinearDepth - viewSamplePos.z));
 		occlusion += (viewSamplePos.z <= sampleLinearDepth - bias ? rangeCheck : 0.0);
-        //if (sampleDepth < texture(u_positionDepth, inTexCoord).w)
+        //if (sampleDepth < texture(u_positionDepth, v_texCoord).w)
         //    occlusion += 1.0;
 	}
     /*
     for (int x = -8; x <= 8; x++) {
         for (int y = -8; y <= 8; y++) {
-            float sampleDepth = texture(u_positionDepth, inTexCoord + vec2(x, y) / texDim).w; 
+            float sampleDepth = texture(u_positionDepth, v_texCoord + vec2(x, y) / texDim).w; 
 
             //float rangeCheck = smoothstep(0.0, 1.0, SSAO_RADIUS / abs(fragPos.z - sampleDepth));
             //occlusion += (sampleDepth >= samplePos.z + bias ? 1.0 : 0.0) * rangeCheck;
-            if (sampleDepth < texture(u_positionDepth, inTexCoord).w)
+            if (sampleDepth < texture(u_positionDepth, v_texCoord).w)
                 occlusion += 1.0 / 81.0 * 0.25;
         }
     }
@@ -165,7 +165,7 @@ float computeAO(vec3 normal, vec2 direction, vec2 texelSize, vec3 fragPos) {
     vec3 horizonVector;// = vec3(0.0);
 	
 	for (int i = 2; i < 10; i++) {
-		vec2 marchPosition = inTexCoord + i * texelSize * direction * 8.0;
+		vec2 marchPosition = v_texCoord + i * texelSize * direction * 8.0;
 		
 		float depth = texture(u_depth, vec2(marchPosition.x, marchPosition.y)).x;
         //if (depth == 1.0) continue;
@@ -198,13 +198,13 @@ float computeAO(vec3 normal, vec2 direction, vec2 texelSize, vec3 fragPos) {
 float hbao() {
     vec2 screenSize = textureSize(u_depth, 0).xy;
 	vec2 noiseScale = vec2(screenSize.x / 8.0, screenSize.y / 8.0);
-	vec2 noisePos = inTexCoord * noiseScale;
+	vec2 noisePos = v_texCoord * noiseScale;
 
-    float depth = texture(u_depth, inTexCoord).x;
+    float depth = texture(u_depth, v_texCoord).x;
 
-	vec3 fragPos = (u_vp.view * vec4(reconstructPosFromDepth(u_vp.invViewProj, inTexCoord, depth), 1.0)).xyz;
+	vec3 fragPos = (u_vp.view * vec4(reconstructPosFromDepth(u_vp.invViewProj, v_texCoord, depth), 1.0)).xyz;
 
-	vec3 normal = normalize((u_vp.view * vec4(texture(u_normalRoughness, inTexCoord).xyz, 1.0)).xyz);
+	vec3 normal = normalize((u_vp.view * vec4(texture(u_normalRoughness, v_texCoord).xyz, 1.0)).xyz);
 
 	vec2 randomVec = texture(u_ssaoNoise, noisePos).xy;
 	//vec2 randomVec = normalize(vec2(0, 1) + texture(u_ssaoNoise, noisePos).xy * 1.0);

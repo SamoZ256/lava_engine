@@ -1,21 +1,19 @@
-#version 460
+#version 410
 
-layout(binding = 0, std140) uniform VP
+layout(std140) uniform VP
 {
     mat4 viewProj;
     int layerIndex;
 } u_vp;
 
-struct ROUGHNESS
+layout(std140) uniform ROUGHNESS
 {
     float roughness;
-};
+} u_roughness;
 
-uniform ROUGHNESS u_roughness;
+uniform samplerCube environmentMap;
 
-layout(binding = 1) uniform samplerCube environmentMap;
-
-layout(location = 0) in vec2 inTexCoord;
+layout(location = 0) in vec2 v_texCoord;
 layout(location = 0) out vec4 FragColor;
 
 float RadicalInverse_VdC(inout uint bits)
@@ -45,7 +43,8 @@ vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness)
     H.x = cos(phi) * sinTheta;
     H.y = sin(phi) * sinTheta;
     H.z = cosTheta;
-    vec3 up = mix(vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), bvec3(abs(N.z) < 0.999000012874603271484375));
+    bvec3 _188 = bvec3(abs(N.z) < 0.999000012874603271484375);
+    vec3 up = vec3(_188.x ? vec3(0.0, 0.0, 1.0).x : vec3(1.0, 0.0, 0.0).x, _188.y ? vec3(0.0, 0.0, 1.0).y : vec3(1.0, 0.0, 0.0).y, _188.z ? vec3(0.0, 0.0, 1.0).z : vec3(1.0, 0.0, 0.0).z);
     vec3 tangent = normalize(cross(up, N));
     vec3 bitangent = cross(N, tangent);
     vec3 sampleVec = ((tangent * H.x) + (bitangent * H.y)) + (N * H.z);
@@ -66,7 +65,7 @@ float DistributionGGX(vec3 N, vec3 H, float roughness)
 
 void main()
 {
-    vec4 position = u_vp.viewProj * vec4((inTexCoord * 2.0) - vec2(1.0), 1.0, 1.0);
+    vec4 position = u_vp.viewProj * vec4((v_texCoord * 2.0) - vec2(1.0), 1.0, 1.0);
     if (abs(position.y) == 1.0)
     {
         position.x = -position.x;

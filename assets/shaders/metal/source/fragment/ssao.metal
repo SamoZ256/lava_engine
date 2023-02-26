@@ -66,7 +66,7 @@ struct main0_out
 
 struct main0_in
 {
-    float2 inTexCoord [[user(locn0)]];
+    float2 v_texCoord [[user(locn0)]];
 };
 
 static inline __attribute__((always_inline))
@@ -84,17 +84,17 @@ float3 reconstructPosFromDepth(thread const float4x4& invViewProj, thread const 
 }
 
 static inline __attribute__((always_inline))
-float ssao(texture2d<float> u_depth, sampler u_depthSmplr, thread float2& inTexCoord, constant VP& u_vp, texture2d<float> u_normalRoughness, sampler u_normalRoughnessSmplr, texture2d<float> u_ssaoNoise, sampler u_ssaoNoiseSmplr)
+float ssao(texture2d<float> u_depth, sampler u_depthSmplr, thread float2& v_texCoord, constant VP& u_vp, texture2d<float> u_normalRoughness, sampler u_normalRoughnessSmplr, texture2d<float> u_ssaoNoise, sampler u_ssaoNoiseSmplr)
 {
-    float depth = u_depth.sample(u_depthSmplr, inTexCoord).x;
+    float depth = u_depth.sample(u_depthSmplr, v_texCoord).x;
     float4x4 param = u_vp.invViewProj;
-    float2 param_1 = inTexCoord;
+    float2 param_1 = v_texCoord;
     float param_2 = depth;
     float3 fragPos = reconstructPosFromDepth(param, param_1, param_2);
-    float3 normal = fast::normalize((u_normalRoughness.sample(u_normalRoughnessSmplr, inTexCoord).xyz * 2.0) - float3(1.0));
+    float3 normal = fast::normalize((u_normalRoughness.sample(u_normalRoughnessSmplr, v_texCoord).xyz * 2.0) - float3(1.0));
     int2 texDim = int2(u_depth.get_width(), u_depth.get_height());
     int2 noiseDim = int2(u_ssaoNoise.get_width(), u_ssaoNoise.get_height());
-    float2 noiseUV = float2(float(texDim.x) / float(noiseDim.x), float(texDim.y) / float(noiseDim.y)) * inTexCoord;
+    float2 noiseUV = float2(float(texDim.x) / float(noiseDim.x), float(texDim.y) / float(noiseDim.y)) * v_texCoord;
     float3 randomVec = u_ssaoNoise.sample(u_ssaoNoiseSmplr, noiseUV).xyz;
     float3 tangent = fast::normalize(randomVec - (normal * dot(randomVec, normal)));
     float3 bitangent = cross(tangent, normal);
@@ -133,7 +133,7 @@ float length2(thread const float3& a)
 }
 
 static inline __attribute__((always_inline))
-float computeAO(thread const float3& normal, thread const float2& direction, thread const float2& texelSize, thread const float3& fragPos, texture2d<float> u_depth, sampler u_depthSmplr, thread float2& inTexCoord, constant VP& u_vp)
+float computeAO(thread const float3& normal, thread const float2& direction, thread const float2& texelSize, thread const float3& fragPos, texture2d<float> u_depth, sampler u_depthSmplr, thread float2& v_texCoord, constant VP& u_vp)
 {
     float3 viewVector = fast::normalize(fragPos);
     float3 leftDirection = cross(viewVector, float3(direction, 0.0));
@@ -144,7 +144,7 @@ float computeAO(thread const float3& normal, thread const float2& direction, thr
     float3 horizonVector;
     for (int i = 2; i < 10; i++)
     {
-        float2 marchPosition = inTexCoord + (((texelSize * float(i)) * direction) * 8.0);
+        float2 marchPosition = v_texCoord + (((texelSize * float(i)) * direction) * 8.0);
         float depth = u_depth.sample(u_depthSmplr, float2(marchPosition.x, marchPosition.y)).x;
         float4x4 param = u_vp.invViewProj;
         float2 param_1 = marchPosition;
@@ -165,17 +165,17 @@ float computeAO(thread const float3& normal, thread const float2& direction, thr
 }
 
 static inline __attribute__((always_inline))
-float hbao(texture2d<float> u_depth, sampler u_depthSmplr, thread float2& inTexCoord, constant VP& u_vp, texture2d<float> u_normalRoughness, sampler u_normalRoughnessSmplr, texture2d<float> u_ssaoNoise, sampler u_ssaoNoiseSmplr)
+float hbao(texture2d<float> u_depth, sampler u_depthSmplr, thread float2& v_texCoord, constant VP& u_vp, texture2d<float> u_normalRoughness, sampler u_normalRoughnessSmplr, texture2d<float> u_ssaoNoise, sampler u_ssaoNoiseSmplr)
 {
     float2 screenSize = float2(int2(u_depth.get_width(), u_depth.get_height()));
     float2 noiseScale = float2(screenSize.x / 8.0, screenSize.y / 8.0);
-    float2 noisePos = inTexCoord * noiseScale;
-    float depth = u_depth.sample(u_depthSmplr, inTexCoord).x;
+    float2 noisePos = v_texCoord * noiseScale;
+    float depth = u_depth.sample(u_depthSmplr, v_texCoord).x;
     float4x4 param = u_vp.invViewProj;
-    float2 param_1 = inTexCoord;
+    float2 param_1 = v_texCoord;
     float param_2 = depth;
     float3 fragPos = (u_vp.view * float4(reconstructPosFromDepth(param, param_1, param_2), 1.0)).xyz;
-    float3 normal = fast::normalize((u_vp.view * float4(u_normalRoughness.sample(u_normalRoughnessSmplr, inTexCoord).xyz, 1.0)).xyz);
+    float3 normal = fast::normalize((u_vp.view * float4(u_normalRoughness.sample(u_normalRoughnessSmplr, v_texCoord).xyz, 1.0)).xyz);
     float2 randomVec = u_ssaoNoise.sample(u_ssaoNoiseSmplr, noisePos).xy;
     float2 texelSize = float2(1.0) / screenSize;
     float rez = 0.0;
@@ -183,22 +183,22 @@ float hbao(texture2d<float> u_depth, sampler u_depthSmplr, thread float2& inTexC
     float2 param_4 = float2(randomVec);
     float2 param_5 = texelSize;
     float3 param_6 = fragPos;
-    rez += computeAO(param_3, param_4, param_5, param_6, u_depth, u_depthSmplr, inTexCoord, u_vp);
+    rez += computeAO(param_3, param_4, param_5, param_6, u_depth, u_depthSmplr, v_texCoord, u_vp);
     float3 param_7 = normal;
     float2 param_8 = -float2(randomVec);
     float2 param_9 = texelSize;
     float3 param_10 = fragPos;
-    rez += computeAO(param_7, param_8, param_9, param_10, u_depth, u_depthSmplr, inTexCoord, u_vp);
+    rez += computeAO(param_7, param_8, param_9, param_10, u_depth, u_depthSmplr, v_texCoord, u_vp);
     float3 param_11 = normal;
     float2 param_12 = float2(-randomVec.y, -randomVec.x);
     float2 param_13 = texelSize;
     float3 param_14 = fragPos;
-    rez += computeAO(param_11, param_12, param_13, param_14, u_depth, u_depthSmplr, inTexCoord, u_vp);
+    rez += computeAO(param_11, param_12, param_13, param_14, u_depth, u_depthSmplr, v_texCoord, u_vp);
     float3 param_15 = normal;
     float2 param_16 = float2(randomVec.y, randomVec.x);
     float2 param_17 = texelSize;
     float3 param_18 = fragPos;
-    rez += computeAO(param_15, param_16, param_17, param_18, u_depth, u_depthSmplr, inTexCoord, u_vp);
+    rez += computeAO(param_15, param_16, param_17, param_18, u_depth, u_depthSmplr, v_texCoord, u_vp);
     return 1.0 - (rez * 0.25);
 }
 
@@ -213,13 +213,13 @@ fragment main0_out main0(main0_in in [[stage_in]], constant VP& u_vp [[buffer(0)
     {
         if (_678)
         {
-            out.FragColor = ssao(u_depth, u_depthSmplr, in.inTexCoord, u_vp, u_normalRoughness, u_normalRoughnessSmplr, u_ssaoNoise, u_ssaoNoiseSmplr);
+            out.FragColor = ssao(u_depth, u_depthSmplr, in.v_texCoord, u_vp, u_normalRoughness, u_normalRoughnessSmplr, u_ssaoNoise, u_ssaoNoiseSmplr);
         }
         else
         {
             if (_683)
             {
-                out.FragColor = hbao(u_depth, u_depthSmplr, in.inTexCoord, u_vp, u_normalRoughness, u_normalRoughnessSmplr, u_ssaoNoise, u_ssaoNoiseSmplr);
+                out.FragColor = hbao(u_depth, u_depthSmplr, in.v_texCoord, u_vp, u_normalRoughness, u_normalRoughnessSmplr, u_ssaoNoise, u_ssaoNoiseSmplr);
             }
         }
     }

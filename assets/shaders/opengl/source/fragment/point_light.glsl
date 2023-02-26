@@ -1,13 +1,13 @@
-#version 460
+#version 410
 
-layout(binding = 1, std140) uniform VP
+layout(std140) uniform VP
 {
     mat4 invViewProj;
 } u_vp;
 
-layout(binding = 2) uniform sampler2D u_depth;
-layout(binding = 3) uniform sampler2D u_normalRoughness;
-layout(binding = 4) uniform sampler2D u_albedoMetallic;
+uniform sampler2D u_depth;
+uniform sampler2D u_normalRoughness;
+uniform sampler2D u_albedoMetallic;
 
 layout(location = 0) out vec4 FragColor;
 

@@ -18,7 +18,7 @@ struct main0_out
 
 struct main0_in
 {
-    float2 inTexCoord [[user(locn0)]];
+    float2 v_texCoord [[user(locn0)]];
 };
 
 static inline __attribute__((always_inline))
@@ -33,7 +33,7 @@ float2 sampleSphericalMap(thread const float3& v)
 fragment main0_out main0(main0_in in [[stage_in]], constant VP& u_vp [[buffer(0)]], texture2d<float> hdrMap [[texture(0)]], sampler hdrMapSmplr [[sampler(0)]])
 {
     main0_out out = {};
-    float4 position = u_vp.viewProj * float4((in.inTexCoord * 2.0) - float2(1.0), 1.0, 1.0);
+    float4 position = u_vp.viewProj * float4((in.v_texCoord * 2.0) - float2(1.0), 1.0, 1.0);
     if (abs(position.y) == 1.0)
     {
         position.x = -position.x;
