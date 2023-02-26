@@ -391,7 +391,7 @@ int main() {
     lv::PipelineLayout deferredLayout;
     deferredLayout.descriptorSetLayouts.resize(3);
 
-	deferredLayout.descriptorSetLayouts[0].addBinding(0, LV_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_VERTEX_BIT/* | LV_SHADER_STAGE_FRAGMENT_BIT*/); //View projection
+	deferredLayout.descriptorSetLayouts[0].addBinding(0, LV_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_VERTEX_BIT); //View projection
 
 	deferredLayout.descriptorSetLayouts[1].addBinding(0, LV_DESCRIPTOR_TYPE_UNIFORM_BUFFER, LV_SHADER_STAGE_FRAGMENT_BIT); //Material
 
@@ -951,6 +951,7 @@ int main() {
     disasmComputePass.outputColorAttachmentSampler.init();
 #pragma endregion DISASM_COMPUTE_PASS
     */
+    std::cout << "Test 1 passed" << std::endl;
 
     //Graphics pipelines
 
@@ -1049,28 +1050,35 @@ int main() {
     // *************** Deferred shader ***************
 #pragma region DEFERRED_SHADER
     //Vertex
+    std::cout << "Test 1.1 passed" << std::endl;
     lv::ShaderBundle vertDeferredShaderBundle;
     vertDeferredShaderBundle.init("assets/shaders/shader_bundles/vertex/deferred.json");
+    std::cout << "Test 1.2 passed" << std::endl;
 
     lv::ShaderModuleCreateInfo vertDeferredCreateInfo{};
     vertDeferredCreateInfo.shaderBundle = &vertDeferredShaderBundle;
     vertDeferredCreateInfo.shaderStage = LV_SHADER_STAGE_VERTEX_BIT;
     vertDeferredCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("vertex/deferred"));
+    std::cout << "Test 1.3 passed" << std::endl;
 
     lv::ShaderModule vertDeferredModule;
     vertDeferredModule.init(vertDeferredCreateInfo);
+    std::cout << "Test 1.4 passed" << std::endl;
 
     //Fragment
     lv::ShaderBundle fragDeferredShaderBundle;
     fragDeferredShaderBundle.init("assets/shaders/shader_bundles/fragment/deferred.json");
+    std::cout << "Test 1.4.1 passed" << std::endl;
 
     lv::ShaderModuleCreateInfo fragDeferredCreateInfo{};
     fragDeferredCreateInfo.shaderBundle = &fragDeferredShaderBundle;
     fragDeferredCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
     fragDeferredCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/deferred"));
+    std::cout << "Test 1.4.2 passed" << std::endl;
 
     lv::ShaderModule fragDeferredModule;
     fragDeferredModule.init(fragDeferredCreateInfo);
+    std::cout << "Test 1.4.3 passed" << std::endl;
     
     //Shader
 	lv::GraphicsPipelineCreateInfo deferredGraphicsPipelineCreateInfo{};
@@ -1083,10 +1091,13 @@ int main() {
 
     deferredGraphicsPipelineCreateInfo.config.cullMode = LV_CULL_MODE_BACK_BIT;
     deferredGraphicsPipelineCreateInfo.config.depthTestEnable = LV_TRUE;
+    std::cout << "Test 1.5 passed" << std::endl;
 
 	lv::GraphicsPipeline deferredGraphicsPipeline;
     deferredGraphicsPipeline.init(deferredGraphicsPipelineCreateInfo);
+    std::cout << "Test 1.6 passed" << std::endl;
 #pragma endregion DEFERRED_SHADER
+    std::cout << "Test 2 passed" << std::endl;
 
     // *************** Shadow shader ***************
 #pragma region SHADOW_SHADER
@@ -1620,7 +1631,6 @@ int main() {
     hdrDescriptorSet.layoutIndex = 0;
     SETUP_HDR_DESCRIPTORS
     hdrDescriptorSet.init();
-    std::cout << "Test 2 passed" << std::endl;
 
     /*
     lv::DescriptorSet disasmDescriptorSet(disasmLayout, 0);
