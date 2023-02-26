@@ -179,12 +179,6 @@ if (BACKEND_VULKAN)
         "external/imgui/used_backends/imgui_impl_vulkan.cpp"
     )
 
-    find_library (
-        VULKAN_LIB
-        NAMES vulkan libvulkan
-        HINTS "/usr/local/Cellar/Vulkan/macOS/lib"
-    )
-
     target_link_libraries(${PROJECT_NAME} PUBLIC
         ${Vulkan_LIBRARIES}
     )

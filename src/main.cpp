@@ -184,8 +184,6 @@ struct MainRenderPass {
     lv::Image colorImage;
     lv::ImageView colorImageView;
     lv::Sampler colorSampler;
-
-    //lv::DescriptorSet descriptorSet = lv::DescriptorSet(SHADER_TYPE_HDR, 0);
 };
 
 #define SETUP_MAIN_0_DESCRIPTORS \
@@ -1500,7 +1498,6 @@ int main() {
     lv::Sampler aoNoiseSampler;
     aoNoiseSampler.addressMode = LV_SAMPLER_ADDRESS_MODE_REPEAT;
     aoNoiseSampler.init();
-    std::cout << "Test 1 passed" << std::endl;
 
     //Skylight
     lv::Skylight skylight(0);
@@ -1623,6 +1620,7 @@ int main() {
     hdrDescriptorSet.layoutIndex = 0;
     SETUP_HDR_DESCRIPTORS
     hdrDescriptorSet.init();
+    std::cout << "Test 2 passed" << std::endl;
 
     /*
     lv::DescriptorSet disasmDescriptorSet(disasmLayout, 0);
@@ -1751,7 +1749,6 @@ int main() {
         //Mouse
 		int32_t mouseX, mouseY;
 		lvndGetCursorPosition(window, &mouseX, &mouseY);
-        //glm::rotateX(game.scene().camera->direction, )
 
         //Window size
         uint16_t width, height;
@@ -1768,17 +1765,11 @@ int main() {
                 game.scene().editorCamera.firstClick = true;
             }
         }
-        //game.scene().camera->rotation.y += 60.0f * dt;
-
-        //std::cout << game.scene().camera->aspectRatio << " : " << game.scene().camera-> << std::endl;
         game.scene().camera->loadViewProj();
 
-        //transform.rotation.y += 10.0f * dt;
         game.scene().calculateModels();
 
         game.scene().update(dt);
-        
-        //terrainTransform.calcModel();
 
         swapChain.acquireNextImage();
 
@@ -1863,10 +1854,8 @@ int main() {
 
         ssaoGraphicsPipeline.bind();
         halfMainViewport.bind();
-        std::cout << "SSAO render pass 1" << std::endl;
 
         ssaoDescriptorSet.bind();
-        std::cout << "SSAO render pass 2" << std::endl;
 
         PCSsaoVP pcSsaoVP{g_game->scene().camera->projection, g_game->scene().camera->view, glm::inverse(viewProj)};
         ssaoGraphicsPipeline.uploadPushConstants(&pcSsaoVP, 0);
@@ -2230,19 +2219,6 @@ void getLightMatrix(glm::vec3 lightDir, float nearPlane, float farPlane, uint8_t
         float zAdd = g_game->scene().camera->farPlane * 0.5f;
         minZ -= zAdd;
         maxZ += zAdd;
-        /*
-        float xyAdd = SHADOW_FAR_PLANE * 0.08f;
-        if (firstCascade) {
-            minX -= xyAdd;
-            maxX += xyAdd;
-            minY -= xyAdd;
-            maxY += xyAdd;
-        }
-        */
-        /*
-        std::cout << nearPlane << ", " << farPlane << std::endl;
-        std::cout << minX << ", " << maxX << " : " << minY << ", " << maxY << " : " << minZ << ", " << maxZ << std::endl;
-        */
 
         glm::mat4 projection = glm::ortho(minX, maxX, minY, maxY, minZ, maxZ);
 
