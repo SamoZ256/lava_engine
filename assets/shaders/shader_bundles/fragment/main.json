@@ -31,19 +31,19 @@
                 "0": {
                     "descriptorType": "combinedImageSampler",
                     "name": "u_irradianceMap",
-                    "samplerBinding": 4,
+                    "samplerBinding": 1,
                     "textureBinding": 4
                 },
                 "1": {
                     "descriptorType": "combinedImageSampler",
                     "name": "u_prefilteredMap",
-                    "samplerBinding": 5,
+                    "samplerBinding": 2,
                     "textureBinding": 5
                 },
                 "2": {
                     "descriptorType": "combinedImageSampler",
                     "name": "u_brdfLutMap",
-                    "samplerBinding": 6,
+                    "samplerBinding": 3,
                     "textureBinding": 6
                 }
             },
@@ -52,31 +52,22 @@
         "2": {
             "bindings": {
                 "0": {
-                    "descriptorType": "combinedImageSampler",
+                    "descriptorType": "image",
                     "name": "u_depth",
-                    "samplerBinding": 1,
                     "textureBinding": 1
                 },
                 "1": {
-                    "descriptorType": "combinedImageSampler",
+                    "descriptorType": "image",
                     "name": "u_normalRoughness",
-                    "samplerBinding": 2,
                     "textureBinding": 2
                 },
                 "2": {
-                    "descriptorType": "combinedImageSampler",
+                    "descriptorType": "image",
                     "name": "u_albedoMetallic",
-                    "samplerBinding": 3,
                     "textureBinding": 3
-                },
-                "3": {
-                    "descriptorType": "combinedImageSampler",
-                    "name": "u_ssaoTex",
-                    "samplerBinding": 7,
-                    "textureBinding": 7
                 }
             },
-            "maxBinding": "3"
+            "maxBinding": "2"
         }
     },
     "maxSet": "2",

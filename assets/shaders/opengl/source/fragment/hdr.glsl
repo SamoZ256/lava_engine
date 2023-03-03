@@ -2,6 +2,7 @@
 
 uniform sampler2D u_colorTex;
 uniform sampler2D u_bloomTex;
+uniform sampler2D u_ssaoTex;
 
 layout(location = 0) in vec2 v_texCoord;
 layout(location = 0) out vec4 FragColor;
@@ -52,7 +53,7 @@ void main()
     vec2 param = v_texCoord * vec2(1920.0, 1080.0);
     vec2 param_1 = vec2(1920.0, 1080.0);
     vec3 hdrColor = fxaa(param, param_1);
-    hdrColor = mix(hdrColor, texture(u_bloomTex, v_texCoord).xyz, vec3(0.039999999105930328369140625));
+    hdrColor = mix(hdrColor, texture(u_bloomTex, v_texCoord).xyz, vec3(0.039999999105930328369140625)) * texture(u_ssaoTex, v_texCoord).x;
     vec3 mapped = vec3(1.0) - exp((-hdrColor) * 1.0);
     FragColor = vec4(mapped, 1.0);
 }

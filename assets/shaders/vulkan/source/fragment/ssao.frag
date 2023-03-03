@@ -165,7 +165,7 @@ float computeAO(vec3 normal, vec2 direction, vec2 texelSize, vec3 fragPos) {
     vec3 horizonVector;// = vec3(0.0);
 	
 	for (int i = 2; i < 10; i++) {
-		vec2 marchPosition = v_texCoord + i * texelSize * direction * 8.0;
+		vec2 marchPosition = v_texCoord + i * texelSize * direction * 1.0;
 		
 		float depth = texture(u_depth, vec2(marchPosition.x, marchPosition.y)).x;
         //if (depth == 1.0) continue;

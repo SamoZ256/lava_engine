@@ -6,6 +6,7 @@ layout (location = 0) in vec2 v_texCoord;
 
 layout (set = 0, binding = 0) uniform sampler2D u_colorTex;
 layout (set = 0, binding = 1) uniform sampler2D u_bloomTex;
+layout (set = 0, binding = 2) uniform sampler2D u_ssaoTex;
 /*
 layout (set = 0, binding = 1) uniform sampler2D u_depth;
 layout (set = 0, binding = 2) uniform sampler2D u_normalRoughness;
@@ -165,7 +166,7 @@ void main() {
     //vec3 hdrColor;
     //if (v_texCoord.x < 0.5)
     vec3 hdrColor = fxaa(v_texCoord * vec2(1920, 1080), vec2(1920, 1080));//texture(u_colorTex, v_texCoord).rgb;
-    hdrColor = mix(hdrColor, texture(u_bloomTex, v_texCoord).rgb, 0.04);
+    hdrColor = mix(hdrColor, texture(u_bloomTex, v_texCoord).rgb, 0.04) * texture(u_ssaoTex, v_texCoord).r;
     //else
     //    hdrColor = texture(u_colorTex, v_texCoord).rgb;
     vec3 mapped = vec3(1.0) - exp(-hdrColor * exposure);

@@ -150,7 +150,7 @@ void Editor::newFrame() {
 #ifdef LV_BACKEND_VULKAN
 	ImGui_ImplVulkan_NewFrame();
 #elif defined(LV_BACKEND_METAL)
-    ImGui_ImplMetal_NewFrame(lv::g_swapChain->activeRenderPasses[fmin(lv::g_swapChain->crntFrame, lv::g_swapChain->activeRenderPasses.size() - 1)]);
+    ImGui_ImplMetal_NewFrame(lv::g_swapChain->framebuffer.renderPass);
 #elif defined(LV_BACKEND_OPENGL)
     ImGui_ImplOpenGL3_NewFrame();
 #endif

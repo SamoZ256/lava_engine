@@ -13,9 +13,15 @@
                     "name": "u_bloomTex",
                     "samplerBinding": 1,
                     "textureBinding": 1
+                },
+                "2": {
+                    "descriptorType": "combinedImageSampler",
+                    "name": "u_ssaoTex",
+                    "samplerBinding": 2,
+                    "textureBinding": 2
                 }
             },
-            "maxBinding": "1"
+            "maxBinding": "2"
         }
     },
     "maxSet": "0",

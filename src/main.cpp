@@ -103,9 +103,23 @@ struct PCSsaoVP {
 
 //Render passes
 
-//Deferred render pass
-struct DeferredRenderPass {
+//Shadow render pass
+struct ShadowRenderPass {
     lv::Subpass subpass;
+    lv::RenderPass renderPass;
+    lv::Framebuffer framebuffers[CASCADE_COUNT];
+    lv::CommandBuffer commandBuffer;
+
+    lv::Image depthImage;
+    lv::ImageView depthImageView;
+    lv::ImageView depthImageViews[CASCADE_COUNT];
+    lv::Sampler depthSampler;
+};
+
+//Main render pass
+struct MainRenderPass {
+    lv::Subpass deferredSubpass;
+    lv::Subpass mainSubpass;
     lv::RenderPass renderPass;
     lv::Framebuffer framebuffer;
     lv::CommandBuffer commandBuffer;
@@ -122,25 +136,30 @@ struct DeferredRenderPass {
     lv::ImageView depthImageView;
     lv::Sampler depthSampler;
 
-    /*
+    lv::Image colorImage;
+    lv::ImageView colorImageView;
+    lv::Sampler colorSampler;
+
     lv::Image halfDepthImage;
     lv::ImageView halfDepthImageView;
     lv::Sampler halfDepthSampler;
-    */
 };
 
-//Shadow render pass
-struct ShadowRenderPass {
-    lv::Subpass subpass;
-    lv::RenderPass renderPass;
-    lv::Framebuffer framebuffers[CASCADE_COUNT];
-    lv::CommandBuffer commandBuffer;
+#define SETUP_MAIN_0_DESCRIPTORS \
+mainDescriptorSet0.addBinding(directLight.lightUniformBuffer.descriptorInfo(), 0); \
+mainDescriptorSet0.addBinding(mainVPUniformBuffer.descriptorInfo(), 1); \
+mainDescriptorSet0.addBinding(mainShadowUniformBuffer.descriptorInfo(), 2); \
+mainDescriptorSet0.addBinding(shadowRenderPass.depthSampler.descriptorInfo(shadowRenderPass.depthImageView), 3); \
 
-    lv::Image depthImage;
-    lv::ImageView depthImageView;
-    lv::ImageView depthImageViews[CASCADE_COUNT];
-    lv::Sampler depthSampler;
-};
+#define SETUP_MAIN_1_DESCRIPTORS \
+mainDescriptorSet1.addBinding(skylight.sampler.descriptorInfo(skylight.irradianceMapImageView), 0); \
+mainDescriptorSet1.addBinding(skylight.prefilteredMapSampler.descriptorInfo(skylight.prefilteredMapImageView), 1); \
+mainDescriptorSet1.addBinding(brdfLutSampler.descriptorInfo(brdfLutTexture.imageView), 2);
+
+#define SETUP_MAIN_2_DESCRIPTORS \
+mainDescriptorSet2.addBinding(mainRenderPass.depthImageView.descriptorInfo(LV_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL), 0); \
+mainDescriptorSet2.addBinding(mainRenderPass.normalRoughnessImageView.descriptorInfo(LV_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), 1); \
+mainDescriptorSet2.addBinding(mainRenderPass.albedoMetallicImageView.descriptorInfo(LV_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), 2);
 
 //SSAO render pass
 struct SSAORenderPass {
@@ -155,8 +174,8 @@ struct SSAORenderPass {
 };
 
 #define SETUP_SSAO_DESCRIPTORS \
-ssaoDescriptorSet.addBinding(deferredRenderPass./*halfD*/depthSampler.descriptorInfo(deferredRenderPass./*halfD*/depthImageView, LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL), 0); /*disasmComputePass.outputColorAttachmentSampler.descriptorInfo(disasmComputePass.outputColorAttachmentView)*/ \
-ssaoDescriptorSet.addBinding(deferredRenderPass.normalRoughnessSampler.descriptorInfo(deferredRenderPass.normalRoughnessImageView), 1); \
+ssaoDescriptorSet.addBinding(mainRenderPass.halfDepthSampler.descriptorInfo(mainRenderPass.halfDepthImageView, LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL), 0); /*disasmComputePass.outputColorAttachmentSampler.descriptorInfo(disasmComputePass.outputColorAttachmentView)*/ \
+ssaoDescriptorSet.addBinding(mainRenderPass.normalRoughnessSampler.descriptorInfo(mainRenderPass.normalRoughnessImageView), 1); \
 ssaoDescriptorSet.addBinding(aoNoiseSampler.descriptorInfo(aoNoiseTex.imageView), 2);
 
 //SSAO blur render pass
@@ -174,35 +193,7 @@ struct SSAOBlurRenderPass {
 #define SETUP_SSAO_BLUR_DESCRIPTORS \
 ssaoBlurDescriptorSet.addBinding(ssaoRenderPass.colorSampler.descriptorInfo(ssaoRenderPass.colorImageView), 0);
 
-//Main render pass
-struct MainRenderPass {
-    lv::Subpass subpass;
-    lv::RenderPass renderPass;
-    lv::Framebuffer framebuffer;
-    lv::CommandBuffer commandBuffer;
-
-    lv::Image colorImage;
-    lv::ImageView colorImageView;
-    lv::Sampler colorSampler;
-};
-
-#define SETUP_MAIN_0_DESCRIPTORS \
-mainDescriptorSet0.addBinding(directLight.lightUniformBuffer.descriptorInfo(), 0); \
-mainDescriptorSet0.addBinding(mainVPUniformBuffer.descriptorInfo(), 1); \
-mainDescriptorSet0.addBinding(mainShadowUniformBuffer.descriptorInfo(), 2); \
-mainDescriptorSet0.addBinding(shadowRenderPass.depthSampler.descriptorInfo(shadowRenderPass.depthImageView), 3); \
-
-#define SETUP_MAIN_1_DESCRIPTORS \
-mainDescriptorSet1.addBinding(skylight.sampler.descriptorInfo(skylight.irradianceMapImageView), 0); \
-mainDescriptorSet1.addBinding(skylight.prefilteredMapSampler.descriptorInfo(skylight.prefilteredMapImageView), 1); \
-mainDescriptorSet1.addBinding(brdfLutSampler.descriptorInfo(brdfLutTexture.imageView), 2);
-
-#define SETUP_MAIN_2_DESCRIPTORS \
-mainDescriptorSet2.addBinding(deferredRenderPass.depthSampler.descriptorInfo(deferredRenderPass.depthImageView, LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL), 0); \
-mainDescriptorSet2.addBinding(deferredRenderPass.normalRoughnessSampler.descriptorInfo(deferredRenderPass.normalRoughnessImageView), 1); \
-mainDescriptorSet2.addBinding(deferredRenderPass.albedoMetallicSampler.descriptorInfo(deferredRenderPass.albedoMetallicImageView), 2); \
-mainDescriptorSet2.addBinding(ssaoBlurRenderPass.colorSampler.descriptorInfo(ssaoBlurRenderPass.colorImageView), 3);
-
+//Bloom render pass
 struct BloomRenderPass {
     lv::Subpass subpass;
     lv::RenderPass renderPasses[2];
@@ -220,9 +211,22 @@ struct BloomRenderPass {
     lv::Sampler upsampleSampler;
 };
 
+//HDR render pass
+struct HdrRenderPass {
+    lv::Subpass subpass;
+    lv::RenderPass renderPass;
+    lv::Framebuffer framebuffer;
+    lv::CommandBuffer commandBuffer;
+
+    lv::Image colorImage;
+    lv::ImageView colorImageView;
+    lv::Sampler colorSampler;
+};
+
 #define SETUP_HDR_DESCRIPTORS \
 hdrDescriptorSet.addBinding(mainRenderPass.colorSampler.descriptorInfo(mainRenderPass.colorImageView), 0); \
-hdrDescriptorSet.addBinding(bloomRenderPass.downsampleSampler.descriptorInfo(bloomRenderPass.colorImageViews[0]), 1);
+hdrDescriptorSet.addBinding(bloomRenderPass.downsampleSampler.descriptorInfo(bloomRenderPass.colorImageViews[0]), 1); \
+hdrDescriptorSet.addBinding(ssaoBlurRenderPass.colorSampler.descriptorInfo(ssaoBlurRenderPass.colorImageView), 2);
 
 /*
 struct DisasmComputePass {
@@ -326,13 +330,10 @@ int main() {
 	lv::DescriptorPoolCreateInfo descriptorPoolCreateInfo;
 	descriptorPoolCreateInfo.poolSizes[LV_DESCRIPTOR_TYPE_UNIFORM_BUFFER] = 128;
 	descriptorPoolCreateInfo.poolSizes[LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER] = 512;
+    descriptorPoolCreateInfo.poolSizes[LV_DESCRIPTOR_TYPE_INPUT_ATTACHMENT] = 8;
 	//descriptorPoolCreateInfo.poolSizes[VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE] = 2;
 	//descriptorPoolCreateInfo.poolSizes[VK_DESCRIPTOR_TYPE_STORAGE_IMAGE] = 2;
 	lv::DescriptorPool descriptorPool(descriptorPoolCreateInfo);
-
-    lv::MeshComponent::sampler.filter = LV_FILTER_LINEAR;
-    lv::MeshComponent::sampler.addressMode = LV_SAMPLER_ADDRESS_MODE_REPEAT;
-    lv::MeshComponent::sampler.init();
     
     uint8_t maxUint8 = std::numeric_limits<uint8_t>::max();
 
@@ -468,10 +469,9 @@ int main() {
     mainLayout.descriptorSetLayouts[1].addBinding(1, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Prefiltered map
     mainLayout.descriptorSetLayouts[1].addBinding(2, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //BRDF Lut map
 
-    mainLayout.descriptorSetLayouts[2].addBinding(0, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Depth
-    mainLayout.descriptorSetLayouts[2].addBinding(1, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Normal roughness
-    mainLayout.descriptorSetLayouts[2].addBinding(2, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Albedo metallic
-    mainLayout.descriptorSetLayouts[2].addBinding(3, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //SSAO
+    mainLayout.descriptorSetLayouts[2].addBinding(0, LV_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, LV_SHADER_STAGE_FRAGMENT_BIT); //Depth
+    mainLayout.descriptorSetLayouts[2].addBinding(1, LV_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, LV_SHADER_STAGE_FRAGMENT_BIT); //Normal roughness
+    mainLayout.descriptorSetLayouts[2].addBinding(2, LV_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, LV_SHADER_STAGE_FRAGMENT_BIT); //Albedo metallic
 
     mainLayout.init();
 
@@ -508,6 +508,7 @@ int main() {
 
 	hdrLayout.descriptorSetLayouts[0].addBinding(0, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Input image
 	hdrLayout.descriptorSetLayouts[0].addBinding(1, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //Bloom image
+    hdrLayout.descriptorSetLayouts[0].addBinding(2, LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, LV_SHADER_STAGE_FRAGMENT_BIT); //SSAO
 
     hdrLayout.init();
 
@@ -540,7 +541,7 @@ int main() {
 
     skylightBakeRenderPass.addSubpass(&skylightBakeSubpass);
     
-    skylightBakeRenderPass.addColorAttachment({
+    skylightBakeRenderPass.addAttachment({
         .format = LV_FORMAT_R8G8B8A8_UNORM,
         .index = 0,
         .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
@@ -549,97 +550,10 @@ int main() {
     skylightBakeRenderPass.init();
 #pragma endregion SKYLIGHT_BAKE_RENDER_PASS
 
-    //Deferred render pass
-#pragma region DEFERRED_RENDER_PASS
-    DeferredRenderPass deferredRenderPass;
-    deferredRenderPass.normalRoughnessImage.usage = LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    deferredRenderPass.normalRoughnessImage.format = LV_FORMAT_R16G16B16A16_SNORM;
-    deferredRenderPass.normalRoughnessImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
-    deferredRenderPass.normalRoughnessImage.init(SRC_WIDTH, SRC_HEIGHT);
-    deferredRenderPass.normalRoughnessImageView.init(&deferredRenderPass.normalRoughnessImage);
-    deferredRenderPass.normalRoughnessSampler.init();
-
-    deferredRenderPass.albedoMetallicImage.usage = LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    deferredRenderPass.albedoMetallicImage.format = LV_FORMAT_R16G16B16A16_UNORM;
-    deferredRenderPass.albedoMetallicImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
-    deferredRenderPass.albedoMetallicImage.init(SRC_WIDTH, SRC_HEIGHT);
-    deferredRenderPass.albedoMetallicImageView.init(&deferredRenderPass.albedoMetallicImage);
-    deferredRenderPass.albedoMetallicSampler.init();
-
-    deferredRenderPass.depthImage.usage = LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | LV_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    deferredRenderPass.depthImage.format = swapChain.depthFormat;
-    deferredRenderPass.depthImage.aspectMask = LV_IMAGE_ASPECT_DEPTH_BIT;
-    deferredRenderPass.depthImage.init(SRC_WIDTH, SRC_HEIGHT);
-    deferredRenderPass.depthImageView.init(&deferredRenderPass.depthImage);
-    deferredRenderPass.depthSampler.init();
-
-    /*
-    deferredRenderPass.halfDepthImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | LV_IMAGE_USAGE_TRANSFER_DST_BIT;
-    deferredRenderPass.halfDepthImage.format = swapChain.depthFormat;
-    deferredRenderPass.halfDepthImage.aspectMask = LV_IMAGE_ASPECT_DEPTH_BIT;
-    deferredRenderPass.halfDepthImage.init(SRC_WIDTH / 2, SRC_HEIGHT / 2);
-    deferredRenderPass.halfDepthImageView.init(&deferredRenderPass.halfDepthImage);
-    deferredRenderPass.halfDepthSampler.init();
-    */
-
-    deferredRenderPass.subpass.addColorAttachment({
-        .index = 0,
-        .layout = LV_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-    });
-
-    deferredRenderPass.subpass.addColorAttachment({
-        .index = 1,
-        .layout = LV_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-    });
-
-    deferredRenderPass.subpass.setDepthAttachment({
-        .index = 2,
-        .layout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-    });
-
-    deferredRenderPass.renderPass.addSubpass(&deferredRenderPass.subpass);
-
-    deferredRenderPass.renderPass.addColorAttachment({
-        .format = deferredRenderPass.normalRoughnessImage.format,
-        .index = 0,
-        .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-    });
-    deferredRenderPass.renderPass.addColorAttachment({
-        .format = deferredRenderPass.albedoMetallicImage.format,
-        .index = 1,
-        .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-    });
-    deferredRenderPass.renderPass.setDepthAttachment({
-        .format = deferredRenderPass.depthImage.format,
-        .index = 2,
-        .loadOp = LV_ATTACHMENT_LOAD_OP_CLEAR,
-        .initialLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-        .finalLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
-    });
-
-    deferredRenderPass.renderPass.init();
-
-    deferredRenderPass.framebuffer.addColorAttachment({
-        .imageView = &deferredRenderPass.normalRoughnessImageView,
-        .index = 0
-    });
-    deferredRenderPass.framebuffer.addColorAttachment({
-        .imageView = &deferredRenderPass.albedoMetallicImageView,
-        .index = 1
-    });
-    deferredRenderPass.framebuffer.setDepthAttachment({
-        .imageView = &deferredRenderPass.depthImageView,
-        .index = 2
-    });
-
-    deferredRenderPass.framebuffer.init(&deferredRenderPass.renderPass);
-    deferredRenderPass.commandBuffer.init();
-#pragma endregion DEFERRED_RENDER_PASS
-
     //Shadow render pass
 #pragma region SHADOW_RENDER_PASS
     ShadowRenderPass shadowRenderPass{};
-    shadowRenderPass.depthImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    shadowRenderPass.depthImage.usage = LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     shadowRenderPass.depthImage.format = swapChain.depthFormat;
     shadowRenderPass.depthImage.layerCount = CASCADE_COUNT;
     shadowRenderPass.depthImage.aspectMask = LV_IMAGE_ASPECT_DEPTH_BIT;
@@ -662,11 +576,10 @@ int main() {
 
     shadowRenderPass.renderPass.addSubpass(&shadowRenderPass.subpass);
 
-    shadowRenderPass.renderPass.setDepthAttachment({
+    shadowRenderPass.renderPass.addAttachment({
         .format = shadowRenderPass.depthImage.format,
         .index = 0,
         .loadOp = LV_ATTACHMENT_LOAD_OP_CLEAR,
-        //.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
     });
 
@@ -682,6 +595,177 @@ int main() {
     }
     shadowRenderPass.commandBuffer.init();
 #pragma endregion SHADOW_RENDER_PASS
+
+    //Deferred render pass
+#pragma region DEFERRED_RENDER_PASS
+    MainRenderPass mainRenderPass;
+    mainRenderPass.colorImage.usage = LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    mainRenderPass.colorImage.format = LV_FORMAT_R16G16B16A16_UNORM;
+    mainRenderPass.colorImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
+    mainRenderPass.colorImage.init(SRC_WIDTH, SRC_HEIGHT);
+    mainRenderPass.colorImageView.init(&mainRenderPass.colorImage);
+    mainRenderPass.colorSampler.init();
+
+    mainRenderPass.normalRoughnessImage.usage = LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | LV_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+    mainRenderPass.normalRoughnessImage.format = LV_FORMAT_R16G16B16A16_SNORM;
+    mainRenderPass.normalRoughnessImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
+    mainRenderPass.normalRoughnessImage.init(SRC_WIDTH, SRC_HEIGHT);
+    mainRenderPass.normalRoughnessImageView.init(&mainRenderPass.normalRoughnessImage);
+    mainRenderPass.normalRoughnessSampler.init();
+
+    mainRenderPass.albedoMetallicImage.usage = LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | LV_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | LV_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
+    mainRenderPass.albedoMetallicImage.format = LV_FORMAT_R16G16B16A16_UNORM;
+    //mainRenderPass.albedoMetallicImage.memoryType = LV_MEMORY_TYPE_MEMORYLESS;
+    mainRenderPass.albedoMetallicImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
+    mainRenderPass.albedoMetallicImage.init(SRC_WIDTH, SRC_HEIGHT);
+    mainRenderPass.albedoMetallicImageView.init(&mainRenderPass.albedoMetallicImage);
+    mainRenderPass.albedoMetallicSampler.init();
+
+    mainRenderPass.depthImage.usage = LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | LV_IMAGE_USAGE_TRANSFER_SRC_BIT | LV_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+    mainRenderPass.depthImage.format = swapChain.depthFormat;
+    mainRenderPass.depthImage.aspectMask = LV_IMAGE_ASPECT_DEPTH_BIT;
+    mainRenderPass.depthImage.init(SRC_WIDTH, SRC_HEIGHT);
+    mainRenderPass.depthImageView.init(&mainRenderPass.depthImage);
+    mainRenderPass.depthSampler.init();
+
+    mainRenderPass.halfDepthImage.usage = LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | LV_IMAGE_USAGE_TRANSFER_DST_BIT;
+    mainRenderPass.halfDepthImage.format = swapChain.depthFormat;
+    mainRenderPass.halfDepthImage.aspectMask = LV_IMAGE_ASPECT_DEPTH_BIT;
+    mainRenderPass.halfDepthImage.init(SRC_WIDTH / 2, SRC_HEIGHT / 2);
+    mainRenderPass.halfDepthImageView.init(&mainRenderPass.halfDepthImage);
+    mainRenderPass.halfDepthSampler.init();
+
+    mainRenderPass.deferredSubpass.addColorAttachment({
+        .index = 1,
+        .layout = LV_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    });
+
+    mainRenderPass.deferredSubpass.addColorAttachment({
+        .index = 2,
+        .layout = LV_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    });
+
+    mainRenderPass.deferredSubpass.setDepthAttachment({
+        .index = 3,
+        .layout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+    });
+
+    mainRenderPass.renderPass.addSubpass(&mainRenderPass.deferredSubpass);
+
+    mainRenderPass.mainSubpass.addColorAttachment({
+        .index = 0,
+        .layout = LV_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    });
+
+    mainRenderPass.mainSubpass.addInputAttachment({
+        .index = 1,
+        .layout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    });
+
+    mainRenderPass.mainSubpass.addInputAttachment({
+        .index = 2,
+        .layout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    });
+
+    mainRenderPass.mainSubpass.addInputAttachment({
+        .index = 3,
+        .layout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+    });
+
+    mainRenderPass.mainSubpass.setDepthAttachment({
+        .index = 3,
+        .layout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+    });
+
+    mainRenderPass.renderPass.addSubpass(&mainRenderPass.mainSubpass);
+
+    mainRenderPass.renderPass.addAttachment({
+        .format = mainRenderPass.colorImage.format,
+        .index = 0,
+        .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    });
+    mainRenderPass.renderPass.addAttachment({
+        .format = mainRenderPass.normalRoughnessImage.format,
+        .index = 1,
+        .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    });
+    mainRenderPass.renderPass.addAttachment({
+        .format = mainRenderPass.albedoMetallicImage.format,
+        .index = 2,
+        .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+#ifdef LV_BACKEND_VULKAN
+        ,
+        .storeOp = LV_ATTACHMENT_STORE_OP_DONT_CARE
+#endif
+    });
+    mainRenderPass.renderPass.addAttachment({
+        .format = mainRenderPass.depthImage.format,
+        .index = 3,
+        .loadOp = LV_ATTACHMENT_LOAD_OP_CLEAR,
+        .initialLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+        .finalLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+    });
+
+#ifdef LV_BACKEND_VULKAN
+    //Dependencies
+    mainRenderPass.renderPass.dependencies.resize(4);
+
+    mainRenderPass.renderPass.dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    mainRenderPass.renderPass.dependencies[0].dstSubpass = 0;
+    mainRenderPass.renderPass.dependencies[0].srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    mainRenderPass.renderPass.dependencies[0].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    mainRenderPass.renderPass.dependencies[0].srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+    mainRenderPass.renderPass.dependencies[0].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+    mainRenderPass.renderPass.dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+    mainRenderPass.renderPass.dependencies[1].srcSubpass = VK_SUBPASS_EXTERNAL;
+    mainRenderPass.renderPass.dependencies[1].dstSubpass = 0;
+    mainRenderPass.renderPass.dependencies[1].srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    mainRenderPass.renderPass.dependencies[1].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    mainRenderPass.renderPass.dependencies[1].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+    mainRenderPass.renderPass.dependencies[1].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    mainRenderPass.renderPass.dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+    // This dependency transitions the input attachment from color attachment to shader read
+    mainRenderPass.renderPass.dependencies[2].srcSubpass = 0;
+    mainRenderPass.renderPass.dependencies[2].dstSubpass = 1;
+    mainRenderPass.renderPass.dependencies[2].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    mainRenderPass.renderPass.dependencies[2].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    mainRenderPass.renderPass.dependencies[2].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    mainRenderPass.renderPass.dependencies[2].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    mainRenderPass.renderPass.dependencies[2].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+    mainRenderPass.renderPass.dependencies[3].srcSubpass = 1;
+    mainRenderPass.renderPass.dependencies[3].dstSubpass = VK_SUBPASS_EXTERNAL;
+    mainRenderPass.renderPass.dependencies[3].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    mainRenderPass.renderPass.dependencies[3].dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    mainRenderPass.renderPass.dependencies[3].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    mainRenderPass.renderPass.dependencies[3].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+    mainRenderPass.renderPass.dependencies[3].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+#endif
+
+    mainRenderPass.renderPass.init();
+
+    mainRenderPass.framebuffer.addColorAttachment({
+        .imageView = &mainRenderPass.colorImageView,
+        .index = 0
+    });
+    mainRenderPass.framebuffer.addColorAttachment({
+        .imageView = &mainRenderPass.normalRoughnessImageView,
+        .index = 1
+    });
+    mainRenderPass.framebuffer.addColorAttachment({
+        .imageView = &mainRenderPass.albedoMetallicImageView,
+        .index = 2
+    });
+    mainRenderPass.framebuffer.setDepthAttachment({
+        .imageView = &mainRenderPass.depthImageView,
+        .index = 3
+    });
+
+    mainRenderPass.framebuffer.init(&mainRenderPass.renderPass);
+    mainRenderPass.commandBuffer.init();
+#pragma endregion DEFERRED_RENDER_PASS
 
     //SSAO render pass
 #pragma region SSAO_RENDER_PASS
@@ -706,14 +790,14 @@ int main() {
 
     ssaoRenderPass.renderPass.addSubpass(&ssaoRenderPass.subpass);
 
-    ssaoRenderPass.renderPass.addColorAttachment({
+    ssaoRenderPass.renderPass.addAttachment({
         .format = ssaoRenderPass.colorImage.format,
         .index = 0,
         .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
     });
 
-    ssaoRenderPass.renderPass.setDepthAttachment({
-        .format = deferredRenderPass./*halfD*/depthImage.format,
+    ssaoRenderPass.renderPass.addAttachment({
+        .format = mainRenderPass.halfDepthImage.format,
         .index = 1,
         .loadOp = LV_ATTACHMENT_LOAD_OP_LOAD,
         .storeOp = LV_ATTACHMENT_STORE_OP_DONT_CARE,
@@ -729,7 +813,7 @@ int main() {
     });
 
     ssaoRenderPass.framebuffer.setDepthAttachment({
-        .imageView = &deferredRenderPass./*halfD*/depthImageView,
+        .imageView = &mainRenderPass.halfDepthImageView,
         .index = 1
     });
 
@@ -759,14 +843,15 @@ int main() {
 
     ssaoBlurRenderPass.renderPass.addSubpass(&ssaoBlurRenderPass.subpass);
 
-    ssaoBlurRenderPass.renderPass.addColorAttachment({
+    ssaoBlurRenderPass.renderPass.addAttachment({
         .format = ssaoBlurRenderPass.colorImage.format,
         .index = 0,
-        .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+        .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .loadOp = LV_ATTACHMENT_LOAD_OP_CLEAR
     });
 
-    ssaoBlurRenderPass.renderPass.setDepthAttachment({
-        .format = deferredRenderPass.depthImage.format,
+    ssaoBlurRenderPass.renderPass.addAttachment({
+        .format = mainRenderPass.depthImage.format,
         .index = 1,
         .loadOp = LV_ATTACHMENT_LOAD_OP_LOAD,
         .storeOp = LV_ATTACHMENT_STORE_OP_DONT_CARE,
@@ -778,72 +863,22 @@ int main() {
 
     ssaoBlurRenderPass.framebuffer.addColorAttachment({
         .imageView = &ssaoBlurRenderPass.colorImageView,
-        .index = 0
-    });
-
-    ssaoBlurRenderPass.framebuffer.setDepthAttachment({
-        .imageView = &deferredRenderPass.depthImageView,
-        .index = 1
-    });
-
-    ssaoBlurRenderPass.framebuffer.init(&ssaoBlurRenderPass.renderPass);
-    ssaoBlurRenderPass.commandBuffer.init();
-#pragma endregion SSAO_BLUR_RENDER_PASS
-
-    //Main render pass
-#pragma region MAIN_RENDER_PASS
-    MainRenderPass mainRenderPass{};
-    mainRenderPass.colorImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    mainRenderPass.colorImage.format = LV_FORMAT_R16G16B16A16_UNORM; //LV_FORMAT_R32G32B32A32_SFLOAT
-    mainRenderPass.colorImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
-    mainRenderPass.colorImage.init(SRC_WIDTH, SRC_HEIGHT);
-    mainRenderPass.colorImageView.init(&mainRenderPass.colorImage);
-    mainRenderPass.colorSampler.init();
-
-    mainRenderPass.subpass.addColorAttachment({
         .index = 0,
-        .layout = LV_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-    });
-
-    mainRenderPass.subpass.setDepthAttachment({
-        .index = 1,
-        .layout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
-    });
-
-    mainRenderPass.renderPass.addSubpass(&mainRenderPass.subpass);
-
-    mainRenderPass.renderPass.addColorAttachment({
-        .format = mainRenderPass.colorImage.format,
-        .index = 0,
-        .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-    });
-    
-    mainRenderPass.renderPass.setDepthAttachment({
-        .format = deferredRenderPass.depthImage.format,
-        .index = 1,
-        .loadOp = LV_ATTACHMENT_LOAD_OP_LOAD,
-        .storeOp = LV_ATTACHMENT_STORE_OP_DONT_CARE,
-        .initialLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-        .finalLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
-    });
-
-    mainRenderPass.renderPass.init();
-
-    mainRenderPass.framebuffer.addColorAttachment({
-        .imageView = &mainRenderPass.colorImageView,
-        .index = 0
+        .clearValue = {
+            .color = {1.0f, 1.0f, 1.0f, 1.0f}
+        }
     });
 
 #ifndef LV_BACKEND_OPENGL
-    mainRenderPass.framebuffer.setDepthAttachment({
-        .imageView = &deferredRenderPass.depthImageView,
+    ssaoBlurRenderPass.framebuffer.setDepthAttachment({
+        .imageView = &mainRenderPass.depthImageView,
         .index = 1
     });
 #endif
 
-    mainRenderPass.framebuffer.init(&mainRenderPass.renderPass);
-    mainRenderPass.commandBuffer.init();
-#pragma endregion MAIN_RENDER_PASS
+    ssaoBlurRenderPass.framebuffer.init(&ssaoBlurRenderPass.renderPass);
+    ssaoBlurRenderPass.commandBuffer.init();
+#pragma endregion SSAO_BLUR_RENDER_PASS
 
     //Downsample render pass
 #pragma region DOWNSAMPLE_RENDER_PASS
@@ -873,9 +908,10 @@ int main() {
     for (uint8_t i = 0; i < 2; i++) {
         bloomRenderPass.renderPasses[i].addSubpass(&bloomRenderPass.subpass);
 
-        bloomRenderPass.renderPasses[i].addColorAttachment({
+        bloomRenderPass.renderPasses[i].addAttachment({
             .format = bloomRenderPass.colorImages[0].format,
             .index = 0,
+            .initialLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
             .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
             .loadOp = (i == 0 ? LV_ATTACHMENT_LOAD_OP_DONT_CARE : LV_ATTACHMENT_LOAD_OP_LOAD)
         });
@@ -906,7 +942,7 @@ int main() {
 
     //HDR render pass
 #pragma region HDR_RENDER_PASS
-    MainRenderPass hdrRenderPass{};
+    HdrRenderPass hdrRenderPass{};
     hdrRenderPass.colorImage.usage |= LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     hdrRenderPass.colorImage.format = LV_FORMAT_R16G16B16A16_UNORM;
     hdrRenderPass.colorImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
@@ -921,7 +957,7 @@ int main() {
 
     hdrRenderPass.renderPass.addSubpass(&hdrRenderPass.subpass);
 
-    hdrRenderPass.renderPass.addColorAttachment({
+    hdrRenderPass.renderPass.addAttachment({
         .format = hdrRenderPass.colorImage.format,
         .index = 0,
         .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
@@ -951,7 +987,6 @@ int main() {
     disasmComputePass.outputColorAttachmentSampler.init();
 #pragma endregion DISASM_COMPUTE_PASS
     */
-    std::cout << "Test 1 passed" << std::endl;
 
     //Graphics pipelines
 
@@ -983,15 +1018,16 @@ int main() {
     fragEquiToCubeModule.init(fragEquiToCubeCreateInfo);
     
     //Shader
-	lv::GraphicsPipelineCreateInfo equiToCubeGraphicsPipelineCreateInfo{};
-	
-	equiToCubeGraphicsPipelineCreateInfo.vertexShaderModule = &vertCubemapModule;
-	equiToCubeGraphicsPipelineCreateInfo.fragmentShaderModule = &fragEquiToCubeModule;
-	equiToCubeGraphicsPipelineCreateInfo.pipelineLayout = &equiToCubeLayout;
-	equiToCubeGraphicsPipelineCreateInfo.renderPass = &skylightBakeRenderPass;
-
     lv::GraphicsPipeline equiToCubeGraphicsPipeline;
-    equiToCubeGraphicsPipeline.init(equiToCubeGraphicsPipelineCreateInfo);
+	
+	equiToCubeGraphicsPipeline.vertexShaderModule = &vertCubemapModule;
+	equiToCubeGraphicsPipeline.fragmentShaderModule = &fragEquiToCubeModule;
+	equiToCubeGraphicsPipeline.pipelineLayout = &equiToCubeLayout;
+	equiToCubeGraphicsPipeline.renderPass = &skylightBakeRenderPass;
+
+    equiToCubeGraphicsPipeline.addColorBlendAttachment({0});
+
+    equiToCubeGraphicsPipeline.init();
 #pragma endregion EQUIRECTANGULAR_TO_CUBE_SHADER
 
     // *************** Irradiance shader ***************
@@ -1009,15 +1045,16 @@ int main() {
     fragIrradianceModule.init(fragIrradianceCreateInfo);
     
     //Shader
-	lv::GraphicsPipelineCreateInfo irradianceGraphicsPipelineCreateInfo{};
-	
-	irradianceGraphicsPipelineCreateInfo.vertexShaderModule = &vertCubemapModule;
-	irradianceGraphicsPipelineCreateInfo.fragmentShaderModule = &fragIrradianceModule;
-	irradianceGraphicsPipelineCreateInfo.pipelineLayout = &irradianceLayout;
-	irradianceGraphicsPipelineCreateInfo.renderPass = &skylightBakeRenderPass;
-
     lv::GraphicsPipeline irradianceGraphicsPipeline;
-    irradianceGraphicsPipeline.init(irradianceGraphicsPipelineCreateInfo);
+	
+	irradianceGraphicsPipeline.vertexShaderModule = &vertCubemapModule;
+	irradianceGraphicsPipeline.fragmentShaderModule = &fragIrradianceModule;
+	irradianceGraphicsPipeline.pipelineLayout = &irradianceLayout;
+	irradianceGraphicsPipeline.renderPass = &skylightBakeRenderPass;
+
+    irradianceGraphicsPipeline.addColorBlendAttachment({0});
+
+    irradianceGraphicsPipeline.init();
 #pragma endregion IRRADIANCE_SHADER
 
     // *************** Irradiance shader ***************
@@ -1035,69 +1072,18 @@ int main() {
     fragPrefilteredModule.init(fragPrefilteredCreateInfo);
     
     //Shader
-	lv::GraphicsPipelineCreateInfo prefilteredGraphicsPipelineCreateInfo{};
-	
-	prefilteredGraphicsPipelineCreateInfo.vertexShaderModule = &vertCubemapModule;
-	prefilteredGraphicsPipelineCreateInfo.fragmentShaderModule = &fragPrefilteredModule;
-	prefilteredGraphicsPipelineCreateInfo.pipelineLayout = &prefilterLayout;
-	prefilteredGraphicsPipelineCreateInfo.renderPass = &skylightBakeRenderPass;
-
     lv::GraphicsPipeline prefilteredGraphicsPipeline;
-    prefilteredGraphicsPipeline.init(prefilteredGraphicsPipelineCreateInfo);
+	
+	prefilteredGraphicsPipeline.vertexShaderModule = &vertCubemapModule;
+	prefilteredGraphicsPipeline.fragmentShaderModule = &fragPrefilteredModule;
+	prefilteredGraphicsPipeline.pipelineLayout = &prefilterLayout;
+	prefilteredGraphicsPipeline.renderPass = &skylightBakeRenderPass;
+
+    prefilteredGraphicsPipeline.addColorBlendAttachment({0});
+
+    prefilteredGraphicsPipeline.init();
 #pragma endregion PREFILTERED_SHADER
 #endif
-
-    // *************** Deferred shader ***************
-#pragma region DEFERRED_SHADER
-    //Vertex
-    std::cout << "Test 1.1 passed" << std::endl;
-    lv::ShaderBundle vertDeferredShaderBundle;
-    vertDeferredShaderBundle.init("assets/shaders/shader_bundles/vertex/deferred.json");
-    std::cout << "Test 1.2 passed" << std::endl;
-
-    lv::ShaderModuleCreateInfo vertDeferredCreateInfo{};
-    vertDeferredCreateInfo.shaderBundle = &vertDeferredShaderBundle;
-    vertDeferredCreateInfo.shaderStage = LV_SHADER_STAGE_VERTEX_BIT;
-    vertDeferredCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("vertex/deferred"));
-    std::cout << "Test 1.3 passed" << std::endl;
-
-    lv::ShaderModule vertDeferredModule;
-    vertDeferredModule.init(vertDeferredCreateInfo);
-    std::cout << "Test 1.4 passed" << std::endl;
-
-    //Fragment
-    lv::ShaderBundle fragDeferredShaderBundle;
-    fragDeferredShaderBundle.init("assets/shaders/shader_bundles/fragment/deferred.json");
-    std::cout << "Test 1.4.1 passed" << std::endl;
-
-    lv::ShaderModuleCreateInfo fragDeferredCreateInfo{};
-    fragDeferredCreateInfo.shaderBundle = &fragDeferredShaderBundle;
-    fragDeferredCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
-    fragDeferredCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/deferred"));
-    std::cout << "Test 1.4.2 passed" << std::endl;
-
-    lv::ShaderModule fragDeferredModule;
-    fragDeferredModule.init(fragDeferredCreateInfo);
-    std::cout << "Test 1.4.3 passed" << std::endl;
-    
-    //Shader
-	lv::GraphicsPipelineCreateInfo deferredGraphicsPipelineCreateInfo{};
-	deferredGraphicsPipelineCreateInfo.vertexShaderModule = &vertDeferredModule;
-	deferredGraphicsPipelineCreateInfo.fragmentShaderModule = &fragDeferredModule;
-	deferredGraphicsPipelineCreateInfo.pipelineLayout = &deferredLayout;
-	deferredGraphicsPipelineCreateInfo.renderPass = &deferredRenderPass.renderPass;
-
-    deferredGraphicsPipelineCreateInfo.vertexDescriptor = lv::MainVertex::getVertexDescriptor();
-
-    deferredGraphicsPipelineCreateInfo.config.cullMode = LV_CULL_MODE_BACK_BIT;
-    deferredGraphicsPipelineCreateInfo.config.depthTestEnable = LV_TRUE;
-    std::cout << "Test 1.5 passed" << std::endl;
-
-	lv::GraphicsPipeline deferredGraphicsPipeline;
-    deferredGraphicsPipeline.init(deferredGraphicsPipelineCreateInfo);
-    std::cout << "Test 1.6 passed" << std::endl;
-#pragma endregion DEFERRED_SHADER
-    std::cout << "Test 2 passed" << std::endl;
 
     // *************** Shadow shader ***************
 #pragma region SHADOW_SHADER
@@ -1126,104 +1112,64 @@ int main() {
     fragShadowModule.init(fragShadowCreateInfo);
     
     //Shader
-	lv::GraphicsPipelineCreateInfo shadowGraphicsPipelineCreateInfo{};
-	
-	shadowGraphicsPipelineCreateInfo.vertexShaderModule = &vertShadowModule;
-	shadowGraphicsPipelineCreateInfo.fragmentShaderModule = &fragShadowModule;
-	shadowGraphicsPipelineCreateInfo.pipelineLayout = &shadowLayout;
-	shadowGraphicsPipelineCreateInfo.renderPass = &shadowRenderPass.renderPass;
-
-    shadowGraphicsPipelineCreateInfo.vertexDescriptor = lv::MainVertex::getVertexDescriptorShadows();
-
-    shadowGraphicsPipelineCreateInfo.config.cullMode = LV_CULL_MODE_FRONT_BIT;
-    shadowGraphicsPipelineCreateInfo.config.depthTestEnable = LV_TRUE;
-
 	lv::GraphicsPipeline shadowGraphicsPipeline;
-    shadowGraphicsPipeline.init(shadowGraphicsPipelineCreateInfo);
+	
+	shadowGraphicsPipeline.vertexShaderModule = &vertShadowModule;
+	shadowGraphicsPipeline.fragmentShaderModule = &fragShadowModule;
+	shadowGraphicsPipeline.pipelineLayout = &shadowLayout;
+	shadowGraphicsPipeline.renderPass = &shadowRenderPass.renderPass;
+
+    shadowGraphicsPipeline.vertexDescriptor = lv::MainVertex::getVertexDescriptorShadows();
+
+    shadowGraphicsPipeline.config.cullMode = LV_CULL_MODE_FRONT_BIT;
+    shadowGraphicsPipeline.config.depthTestEnable = LV_TRUE;
+
+    shadowGraphicsPipeline.init();
 #pragma endregion SHADOW_SHADER
 
-    // *************** SSAO shader ***************
-#pragma region SSAO_SHADER
+    // *************** Deferred shader ***************
+#pragma region DEFERRED_SHADER
     //Vertex
-    lv::ShaderBundle vertTriangleShaderBundle;
-    vertTriangleShaderBundle.init("assets/shaders/shader_bundles/vertex/triangle.json");
+    lv::ShaderBundle vertDeferredShaderBundle;
+    vertDeferredShaderBundle.init("assets/shaders/shader_bundles/vertex/deferred.json");
 
-    lv::ShaderModuleCreateInfo vertTriangleCreateInfo{};
-    vertTriangleCreateInfo.shaderBundle = &vertTriangleShaderBundle;
-    vertTriangleCreateInfo.shaderStage = LV_SHADER_STAGE_VERTEX_BIT;
-    vertTriangleCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("vertex/triangle"));
+    lv::ShaderModuleCreateInfo vertDeferredCreateInfo{};
+    vertDeferredCreateInfo.shaderBundle = &vertDeferredShaderBundle;
+    vertDeferredCreateInfo.shaderStage = LV_SHADER_STAGE_VERTEX_BIT;
+    vertDeferredCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("vertex/deferred"));
 
-    lv::ShaderModule vertTriangleModule;
-    vertTriangleModule.init(vertTriangleCreateInfo);
+    lv::ShaderModule vertDeferredModule;
+    vertDeferredModule.init(vertDeferredCreateInfo);
 
     //Fragment
-    lv::ShaderBundle fragSsaoShaderBundle;
-    fragSsaoShaderBundle.init("assets/shaders/shader_bundles/fragment/ssao.json");
+    lv::ShaderBundle fragDeferredShaderBundle;
+    fragDeferredShaderBundle.init("assets/shaders/shader_bundles/fragment/deferred.json");
 
-    lv::ShaderModuleCreateInfo fragSsaoCreateInfo{};
-    fragSsaoCreateInfo.shaderBundle = &fragSsaoShaderBundle;
-    fragSsaoCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
-    fragSsaoCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/ssao"));
-    
-    fragSsaoCreateInfo.specializationConstants.resize(1);
-    fragSsaoCreateInfo.specializationConstants[0].constantID = 0;
-    fragSsaoCreateInfo.specializationConstants[0].offset = 0;
-    fragSsaoCreateInfo.specializationConstants[0].size = sizeof(int);
-#ifdef LV_BACKEND_METAL
-    fragSsaoCreateInfo.specializationConstants[0].dataType = MTL::DataTypeInt;
-#endif
+    lv::ShaderModuleCreateInfo fragDeferredCreateInfo{};
+    fragDeferredCreateInfo.shaderBundle = &fragDeferredShaderBundle;
+    fragDeferredCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
+    fragDeferredCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/deferred"));
 
-    fragSsaoCreateInfo.constantsData = &game.scene().graphicsSettings.aoType;
-    fragSsaoCreateInfo.constantsSize = sizeof(int);
-
-    lv::ShaderModule fragSsaoModule;
-    fragSsaoModule.init(fragSsaoCreateInfo);
+    lv::ShaderModule fragDeferredModule;
+    fragDeferredModule.init(fragDeferredCreateInfo);
     
     //Shader
-	lv::GraphicsPipelineCreateInfo ssaoGraphicsPipelineCreateInfo{};
-	
-	ssaoGraphicsPipelineCreateInfo.vertexShaderModule = &vertTriangleModule;
-	ssaoGraphicsPipelineCreateInfo.fragmentShaderModule = &fragSsaoModule;
-	ssaoGraphicsPipelineCreateInfo.pipelineLayout = &ssaoLayout;
-	ssaoGraphicsPipelineCreateInfo.renderPass = &ssaoRenderPass.renderPass;
+	lv::GraphicsPipeline deferredGraphicsPipeline;
+	deferredGraphicsPipeline.vertexShaderModule = &vertDeferredModule;
+	deferredGraphicsPipeline.fragmentShaderModule = &fragDeferredModule;
+	deferredGraphicsPipeline.pipelineLayout = &deferredLayout;
+	deferredGraphicsPipeline.renderPass = &mainRenderPass.renderPass;
 
-    ssaoGraphicsPipelineCreateInfo.config.depthTestEnable = LV_TRUE;
-    ssaoGraphicsPipelineCreateInfo.config.depthWriteEnable = LV_FALSE;
-    ssaoGraphicsPipelineCreateInfo.config.depthOp = LV_COMPARE_OP_NOT_EQUAL;
+    deferredGraphicsPipeline.vertexDescriptor = lv::MainVertex::getVertexDescriptor();
 
-	lv::GraphicsPipeline ssaoGraphicsPipeline;
-    ssaoGraphicsPipeline.init(ssaoGraphicsPipelineCreateInfo);
-#pragma endregion SSAO_SHADER
+    deferredGraphicsPipeline.addColorBlendAttachment({1});
+    deferredGraphicsPipeline.addColorBlendAttachment({2});
 
-    // *************** SSAO blur shader ***************
-#pragma region SSAO_BLUR_SHADER
-    //Fragment
-    lv::ShaderBundle fragBlurShaderBundle;
-    fragBlurShaderBundle.init("assets/shaders/shader_bundles/fragment/blur.json");
+    deferredGraphicsPipeline.config.cullMode = LV_CULL_MODE_BACK_BIT;
+    deferredGraphicsPipeline.config.depthTestEnable = LV_TRUE;
 
-    lv::ShaderModuleCreateInfo fragBlurCreateInfo{};
-    fragBlurCreateInfo.shaderBundle = &fragBlurShaderBundle;
-    fragBlurCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
-    fragBlurCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/blur"));
-
-    lv::ShaderModule fragBlurModule;
-    fragBlurModule.init(fragBlurCreateInfo);
-    
-    //Shader
-	lv::GraphicsPipelineCreateInfo blurGraphicsPipelineCreateInfo{};
-	
-	blurGraphicsPipelineCreateInfo.vertexShaderModule = &vertTriangleModule;
-	blurGraphicsPipelineCreateInfo.fragmentShaderModule = &fragBlurModule;
-	blurGraphicsPipelineCreateInfo.pipelineLayout = &ssaoBlurLayout;
-	blurGraphicsPipelineCreateInfo.renderPass = &ssaoBlurRenderPass.renderPass;
-
-    blurGraphicsPipelineCreateInfo.config.depthTestEnable = LV_TRUE;
-    blurGraphicsPipelineCreateInfo.config.depthWriteEnable = LV_FALSE;
-    blurGraphicsPipelineCreateInfo.config.depthOp = LV_COMPARE_OP_NOT_EQUAL;
-
-	lv::GraphicsPipeline blurGraphicsPipeline;
-    blurGraphicsPipeline.init(blurGraphicsPipelineCreateInfo);
-#pragma endregion SSAO_BLUR_SHADER
+    deferredGraphicsPipeline.init();
+#pragma endregion DEFERRED_SHADER
 
     // *************** Skylight shader ***************
 #pragma region SKYLIGHT_SHADER
@@ -1252,23 +1198,37 @@ int main() {
     fragSkylightModule.init(fragSkylightCreateInfo);
     
     //Shader
-	lv::GraphicsPipelineCreateInfo skylightGraphicsPipelineCreateInfo{};
-	
-	skylightGraphicsPipelineCreateInfo.vertexShaderModule = &vertSkylightModule;
-	skylightGraphicsPipelineCreateInfo.fragmentShaderModule = &fragSkylightModule;
-	skylightGraphicsPipelineCreateInfo.pipelineLayout = &skylightLayout;
-	skylightGraphicsPipelineCreateInfo.renderPass = &mainRenderPass.renderPass;
-
-    skylightGraphicsPipelineCreateInfo.vertexDescriptor = lv::Vertex3D::getVertexDescriptor();
-
-    skylightGraphicsPipelineCreateInfo.config.depthWriteEnable = LV_FALSE;
-
 	lv::GraphicsPipeline skylightGraphicsPipeline;
-    skylightGraphicsPipeline.init(skylightGraphicsPipelineCreateInfo);
+	
+	skylightGraphicsPipeline.vertexShaderModule = &vertSkylightModule;
+	skylightGraphicsPipeline.fragmentShaderModule = &fragSkylightModule;
+	skylightGraphicsPipeline.pipelineLayout = &skylightLayout;
+	skylightGraphicsPipeline.renderPass = &mainRenderPass.renderPass;
+    skylightGraphicsPipeline.subpassIndex = 1;
+
+    skylightGraphicsPipeline.vertexDescriptor = lv::Vertex3D::getVertexDescriptor();
+
+    skylightGraphicsPipeline.addColorBlendAttachment({0});
+
+    skylightGraphicsPipeline.config.depthWriteEnable = LV_FALSE;
+
+    skylightGraphicsPipeline.init();
 #pragma endregion SKYLIGHT_SHADER
 
     // *************** Main shader ***************
 #pragma region MAIN_SHADER
+    //Vertex
+    lv::ShaderBundle vertTriangleShaderBundle;
+    vertTriangleShaderBundle.init("assets/shaders/shader_bundles/vertex/triangle.json");
+
+    lv::ShaderModuleCreateInfo vertTriangleCreateInfo{};
+    vertTriangleCreateInfo.shaderBundle = &vertTriangleShaderBundle;
+    vertTriangleCreateInfo.shaderStage = LV_SHADER_STAGE_VERTEX_BIT;
+    vertTriangleCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("vertex/triangle"));
+
+    lv::ShaderModule vertTriangleModule;
+    vertTriangleModule.init(vertTriangleCreateInfo);
+
     //Fragment
     lv::ShaderBundle fragMainShaderBundle;
     fragMainShaderBundle.init("assets/shaders/shader_bundles/fragment/main.json");
@@ -1282,20 +1242,95 @@ int main() {
     fragMainModule.init(fragMainCreateInfo);
     
     //Shader
-	lv::GraphicsPipelineCreateInfo mainGraphicsPipelineCreateInfo{};
-	
-	mainGraphicsPipelineCreateInfo.vertexShaderModule = &vertTriangleModule;
-	mainGraphicsPipelineCreateInfo.fragmentShaderModule = &fragMainModule;
-	mainGraphicsPipelineCreateInfo.pipelineLayout = &mainLayout;
-	mainGraphicsPipelineCreateInfo.renderPass = &mainRenderPass.renderPass;
-
-    mainGraphicsPipelineCreateInfo.config.depthTestEnable = LV_TRUE;
-    mainGraphicsPipelineCreateInfo.config.depthWriteEnable = LV_FALSE;
-    mainGraphicsPipelineCreateInfo.config.depthOp = LV_COMPARE_OP_NOT_EQUAL;
-
 	lv::GraphicsPipeline mainGraphicsPipeline;
-    mainGraphicsPipeline.init(mainGraphicsPipelineCreateInfo);
+	
+	mainGraphicsPipeline.vertexShaderModule = &vertTriangleModule;
+	mainGraphicsPipeline.fragmentShaderModule = &fragMainModule;
+	mainGraphicsPipeline.pipelineLayout = &mainLayout;
+	mainGraphicsPipeline.renderPass = &mainRenderPass.renderPass;
+    mainGraphicsPipeline.subpassIndex = 1;
+
+    mainGraphicsPipeline.addColorBlendAttachment({0});
+
+    mainGraphicsPipeline.config.depthTestEnable = LV_TRUE;
+    mainGraphicsPipeline.config.depthWriteEnable = LV_FALSE;
+    mainGraphicsPipeline.config.depthOp = LV_COMPARE_OP_NOT_EQUAL;
+
+    mainGraphicsPipeline.init();
 #pragma endregion MAIN_SHADER
+
+    // *************** SSAO shader ***************
+#pragma region SSAO_SHADER
+    //Fragment
+    lv::ShaderBundle fragSsaoShaderBundle;
+    fragSsaoShaderBundle.init("assets/shaders/shader_bundles/fragment/ssao.json");
+
+    lv::ShaderModuleCreateInfo fragSsaoCreateInfo{};
+    fragSsaoCreateInfo.shaderBundle = &fragSsaoShaderBundle;
+    fragSsaoCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
+    fragSsaoCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/ssao"));
+    
+    fragSsaoCreateInfo.specializationConstants.resize(1);
+    fragSsaoCreateInfo.specializationConstants[0].constantID = 0;
+    fragSsaoCreateInfo.specializationConstants[0].offset = 0;
+    fragSsaoCreateInfo.specializationConstants[0].size = sizeof(int);
+#ifdef LV_BACKEND_METAL
+    fragSsaoCreateInfo.specializationConstants[0].dataType = MTL::DataTypeInt;
+#endif
+
+    fragSsaoCreateInfo.constantsData = &game.scene().graphicsSettings.aoType;
+    fragSsaoCreateInfo.constantsSize = sizeof(int);
+
+    lv::ShaderModule fragSsaoModule;
+    fragSsaoModule.init(fragSsaoCreateInfo);
+    
+    //Shader
+	lv::GraphicsPipeline ssaoGraphicsPipeline;
+	
+	ssaoGraphicsPipeline.vertexShaderModule = &vertTriangleModule;
+	ssaoGraphicsPipeline.fragmentShaderModule = &fragSsaoModule;
+	ssaoGraphicsPipeline.pipelineLayout = &ssaoLayout;
+	ssaoGraphicsPipeline.renderPass = &ssaoRenderPass.renderPass;
+
+    ssaoGraphicsPipeline.addColorBlendAttachment({0});
+
+    ssaoGraphicsPipeline.config.depthTestEnable = LV_TRUE;
+    ssaoGraphicsPipeline.config.depthWriteEnable = LV_FALSE;
+    ssaoGraphicsPipeline.config.depthOp = LV_COMPARE_OP_NOT_EQUAL;
+
+    ssaoGraphicsPipeline.init();
+#pragma endregion SSAO_SHADER
+
+    // *************** SSAO blur shader ***************
+#pragma region SSAO_BLUR_SHADER
+    //Fragment
+    lv::ShaderBundle fragBlurShaderBundle;
+    fragBlurShaderBundle.init("assets/shaders/shader_bundles/fragment/blur.json");
+
+    lv::ShaderModuleCreateInfo fragBlurCreateInfo{};
+    fragBlurCreateInfo.shaderBundle = &fragBlurShaderBundle;
+    fragBlurCreateInfo.shaderStage = LV_SHADER_STAGE_FRAGMENT_BIT;
+    fragBlurCreateInfo.source = lv::readFile(GET_SHADER_FILENAME("fragment/blur"));
+
+    lv::ShaderModule fragBlurModule;
+    fragBlurModule.init(fragBlurCreateInfo);
+    
+    //Shader
+	lv::GraphicsPipeline blurGraphicsPipeline;
+	
+	blurGraphicsPipeline.vertexShaderModule = &vertTriangleModule;
+	blurGraphicsPipeline.fragmentShaderModule = &fragBlurModule;
+	blurGraphicsPipeline.pipelineLayout = &ssaoBlurLayout;
+	blurGraphicsPipeline.renderPass = &ssaoBlurRenderPass.renderPass;
+
+    blurGraphicsPipeline.addColorBlendAttachment({0});
+
+    blurGraphicsPipeline.config.depthTestEnable = LV_TRUE;
+    blurGraphicsPipeline.config.depthWriteEnable = LV_FALSE;
+    blurGraphicsPipeline.config.depthOp = LV_COMPARE_OP_NOT_EQUAL;
+
+    blurGraphicsPipeline.init();
+#pragma endregion SSAO_BLUR_SHADER
 
     // *************** Point light shader ***************
     /*
@@ -1348,15 +1383,16 @@ int main() {
     fragDownsampleModule.init(fragDownsampleCreateInfo);
     
     //Shader
-	lv::GraphicsPipelineCreateInfo downsampleGraphicsPipelineCreateInfo{};
-	
-	downsampleGraphicsPipelineCreateInfo.vertexShaderModule = &vertTriangleModule;
-	downsampleGraphicsPipelineCreateInfo.fragmentShaderModule = &fragDownsampleModule;
-	downsampleGraphicsPipelineCreateInfo.pipelineLayout = &bloomLayout;
-	downsampleGraphicsPipelineCreateInfo.renderPass = &bloomRenderPass.renderPasses[0];
-
 	lv::GraphicsPipeline downsampleGraphicsPipeline;
-    downsampleGraphicsPipeline.init(downsampleGraphicsPipelineCreateInfo);
+	
+	downsampleGraphicsPipeline.vertexShaderModule = &vertTriangleModule;
+	downsampleGraphicsPipeline.fragmentShaderModule = &fragDownsampleModule;
+	downsampleGraphicsPipeline.pipelineLayout = &bloomLayout;
+	downsampleGraphicsPipeline.renderPass = &bloomRenderPass.renderPasses[0];
+
+    downsampleGraphicsPipeline.addColorBlendAttachment({0});
+
+    downsampleGraphicsPipeline.init();
 #pragma endregion DOWNSAMPLE_SHADER
 
     // *************** Upsample shader ***************
@@ -1374,21 +1410,23 @@ int main() {
     fragUpsampleModule.init(fragUpsampleCreateInfo);
     
     //Shader
-	lv::GraphicsPipelineCreateInfo upsampleGraphicsPipelineCreateInfo{};
-	
-	upsampleGraphicsPipelineCreateInfo.vertexShaderModule = &vertTriangleModule;
-	upsampleGraphicsPipelineCreateInfo.fragmentShaderModule = &fragUpsampleModule;
-	upsampleGraphicsPipelineCreateInfo.pipelineLayout = &bloomLayout;
-	upsampleGraphicsPipelineCreateInfo.renderPass = &bloomRenderPass.renderPasses[1];
-    
-    bloomRenderPass.renderPasses[1].colorAttachments[0].blendEnable = LV_TRUE;
-    bloomRenderPass.renderPasses[1].colorAttachments[0].srcRgbBlendFactor = LV_BLEND_FACTOR_ONE;
-    bloomRenderPass.renderPasses[1].colorAttachments[0].dstRgbBlendFactor = LV_BLEND_FACTOR_ONE;
-    bloomRenderPass.renderPasses[1].colorAttachments[0].srcAlphaBlendFactor = LV_BLEND_FACTOR_ONE;
-    bloomRenderPass.renderPasses[1].colorAttachments[0].dstAlphaBlendFactor = LV_BLEND_FACTOR_ONE;
-
 	lv::GraphicsPipeline upsampleGraphicsPipeline;
-    upsampleGraphicsPipeline.init(upsampleGraphicsPipelineCreateInfo);
+	
+	upsampleGraphicsPipeline.vertexShaderModule = &vertTriangleModule;
+	upsampleGraphicsPipeline.fragmentShaderModule = &fragUpsampleModule;
+	upsampleGraphicsPipeline.pipelineLayout = &bloomLayout;
+	upsampleGraphicsPipeline.renderPass = &bloomRenderPass.renderPasses[1];
+
+    upsampleGraphicsPipeline.addColorBlendAttachment({
+        .index = 0,
+        .blendEnable = LV_TRUE,
+        .srcRgbBlendFactor = LV_BLEND_FACTOR_ONE,
+        .dstRgbBlendFactor = LV_BLEND_FACTOR_ONE,
+        .srcAlphaBlendFactor = LV_BLEND_FACTOR_ONE,
+        .dstAlphaBlendFactor = LV_BLEND_FACTOR_ONE
+    });
+
+    upsampleGraphicsPipeline.init();
 #pragma endregion UPSAMPLE_SHADER
 
     // *************** HDR shader ***************
@@ -1406,15 +1444,16 @@ int main() {
     fragHdrModule.init(fragHdrCreateInfo);
     
     //Shader
-	lv::GraphicsPipelineCreateInfo hdrGraphicsPipelineCreateInfo{};
-	
-	hdrGraphicsPipelineCreateInfo.vertexShaderModule = &vertTriangleModule;
-	hdrGraphicsPipelineCreateInfo.fragmentShaderModule = &fragHdrModule;
-	hdrGraphicsPipelineCreateInfo.pipelineLayout = &hdrLayout;
-	hdrGraphicsPipelineCreateInfo.renderPass = &hdrRenderPass.renderPass;
-
 	lv::GraphicsPipeline hdrGraphicsPipeline;
-    hdrGraphicsPipeline.init(hdrGraphicsPipelineCreateInfo);
+	
+	hdrGraphicsPipeline.vertexShaderModule = &vertTriangleModule;
+	hdrGraphicsPipeline.fragmentShaderModule = &fragHdrModule;
+	hdrGraphicsPipeline.pipelineLayout = &hdrLayout;
+	hdrGraphicsPipeline.renderPass = &hdrRenderPass.renderPass;
+
+    hdrGraphicsPipeline.addColorBlendAttachment({0});
+
+    hdrGraphicsPipeline.init();
 #pragma endregion HDR_SHADER
 
     //Compute pipelines
@@ -1441,17 +1480,15 @@ int main() {
     */
 
     //Command buffers
-    //lv::CommandBuffer depthBlitCommandBuffer;
-    //depthBlitCommandBuffer.init();
+    lv::CommandBuffer depthBlitCommandBuffer;
+    depthBlitCommandBuffer.init();
 
     //Semaphores
-    /*
     lv::Semaphore deferredRenderSemaphore;
     deferredRenderSemaphore.init();
 
     lv::Semaphore depthBlitSemaphore;
     depthBlitSemaphore.init();
-    */
 
     //Light
     lv::DirectLight directLight;
@@ -1687,6 +1724,8 @@ int main() {
 #endif
     );
 
+    //return 0;
+
     while (lvndWindowIsOpen(window)) {
         //Delta time
         float crntTime = lvndGetTime();
@@ -1782,30 +1821,9 @@ int main() {
         game.scene().update(dt);
 
         swapChain.acquireNextImage();
+        //std::cout << "New frame" << std::endl;
 
         //Rendering
-
-        //Deferred render pass
-        deferredRenderPass.commandBuffer.bind();
-
-        deferredRenderPass.framebuffer.bind();
-
-        deferredGraphicsPipeline.bind();
-        mainViewport.bind();
-
-        deferredDecriptorSet.bind();
-
-        glm::mat4 viewProj = g_game->scene().camera->projection * g_game->scene().camera->view;
-
-        deferredVPUniformBuffer.copyDataTo(0, &viewProj);
-
-        game.scene().render(deferredGraphicsPipeline);
-
-        deferredRenderPass.framebuffer.unbind();
-
-        deferredRenderPass.commandBuffer.unbind();
-
-		deferredRenderPass.commandBuffer.submit(/*nullptr, &deferredRenderSemaphore*/);
 
         //Shadow matrices
         getLightMatrices(directLight.light.direction);
@@ -1836,70 +1854,24 @@ int main() {
 
         shadowRenderPass.commandBuffer.submit();
 
-        //Disassemble depth compute pass
-        /*
-        disasmComputePipeline.bind();
-
-        disasmDescriptorSet.bind();
-
-        disasmComputePipeline.dispatch(64, 64, 1,
-                                       (SRC_WIDTH + 64 - 1) / 64, (SRC_HEIGHT + 64 - 1) / 64, 1);
-        */
-
-        //Creating depth image half the original size
-        /*
-        depthBlitCommandBuffer.bind();
-
-        deferredRenderPass.halfDepthImage.blitToFromImage(0, deferredRenderPass.depthImage);
-
-        depthBlitCommandBuffer.unbind();
-
-        depthBlitCommandBuffer.submit(&deferredRenderSemaphore, &depthBlitSemaphore);
-        */
-
-        //SSAO render pass
-        ssaoRenderPass.commandBuffer.bind();
-
-        ssaoRenderPass.framebuffer.bind();
-
-        ssaoGraphicsPipeline.bind();
-        halfMainViewport.bind();
-
-        ssaoDescriptorSet.bind();
-
-        PCSsaoVP pcSsaoVP{g_game->scene().camera->projection, g_game->scene().camera->view, glm::inverse(viewProj)};
-        ssaoGraphicsPipeline.uploadPushConstants(&pcSsaoVP, 0);
-
-        swapChain.renderFullscreenTriangle();
-
-        ssaoRenderPass.framebuffer.unbind();
-
-        ssaoRenderPass.commandBuffer.unbind();
-
-        ssaoRenderPass.commandBuffer.submit(/*&depthBlitSemaphore*/);
-
-        //SSAO blur render pass
-        ssaoBlurRenderPass.commandBuffer.bind();
-
-        ssaoBlurRenderPass.framebuffer.bind();
-
-        blurGraphicsPipeline.bind();
-        mainViewport.bind();
-
-        ssaoBlurDescriptorSet.bind();
-
-        swapChain.renderFullscreenTriangle();
-
-        ssaoBlurRenderPass.framebuffer.unbind();
-
-        ssaoBlurRenderPass.commandBuffer.unbind();
-
-        ssaoBlurRenderPass.commandBuffer.submit();
-
         //Main render pass
         mainRenderPass.commandBuffer.bind();
 
         mainRenderPass.framebuffer.bind();
+
+        deferredGraphicsPipeline.bind();
+        mainViewport.bind();
+
+        deferredDecriptorSet.bind();
+
+        glm::mat4 viewProj = g_game->scene().camera->projection * g_game->scene().camera->view;
+
+        deferredVPUniformBuffer.copyDataTo(0, &viewProj);
+
+        game.scene().render(deferredGraphicsPipeline);
+
+        //Next subpass
+        mainRenderPass.framebuffer.nextSubpass();
 
         //Skylight
         skylightGraphicsPipeline.bind();
@@ -1935,7 +1907,65 @@ int main() {
 
         mainRenderPass.commandBuffer.unbind();
 
-        mainRenderPass.commandBuffer.submit();
+		mainRenderPass.commandBuffer.submit(nullptr, &deferredRenderSemaphore);
+
+        //Disassemble depth compute pass
+        /*
+        disasmComputePipeline.bind();
+
+        disasmDescriptorSet.bind();
+
+        disasmComputePipeline.dispatch(64, 64, 1,
+                                       (SRC_WIDTH + 64 - 1) / 64, (SRC_HEIGHT + 64 - 1) / 64, 1);
+        */
+
+        //Creating depth image half the original size
+        depthBlitCommandBuffer.bind();
+
+        mainRenderPass.halfDepthImage.blitToFromImage(0, mainRenderPass.depthImage);
+
+        depthBlitCommandBuffer.unbind();
+
+        depthBlitCommandBuffer.submit(&deferredRenderSemaphore, &depthBlitSemaphore);
+
+        //SSAO render pass
+        ssaoRenderPass.commandBuffer.bind();
+
+        ssaoRenderPass.framebuffer.bind();
+
+        ssaoGraphicsPipeline.bind();
+        halfMainViewport.bind();
+
+        ssaoDescriptorSet.bind();
+
+        PCSsaoVP pcSsaoVP{g_game->scene().camera->projection, g_game->scene().camera->view, glm::inverse(viewProj)};
+        ssaoGraphicsPipeline.uploadPushConstants(&pcSsaoVP, 0);
+
+        swapChain.renderFullscreenTriangle();
+
+        ssaoRenderPass.framebuffer.unbind();
+
+        ssaoRenderPass.commandBuffer.unbind();
+
+        ssaoRenderPass.commandBuffer.submit(&depthBlitSemaphore);
+
+        //SSAO blur render pass
+        ssaoBlurRenderPass.commandBuffer.bind();
+
+        ssaoBlurRenderPass.framebuffer.bind();
+
+        blurGraphicsPipeline.bind();
+        mainViewport.bind();
+
+        ssaoBlurDescriptorSet.bind();
+
+        swapChain.renderFullscreenTriangle();
+
+        ssaoBlurRenderPass.framebuffer.unbind();
+
+        ssaoBlurRenderPass.commandBuffer.unbind();
+
+        ssaoBlurRenderPass.commandBuffer.submit();
 
         //Downsample render pass
         bloomRenderPass.downsampleCommandBuffer.bind();
@@ -2055,8 +2085,8 @@ int main() {
     mainShadowUniformBuffer.destroy();
     mainVPUniformBuffer.destroy();
 
-    deferredRenderPass.renderPass.destroy();
-    deferredRenderPass.framebuffer.destroy();
+    mainRenderPass.renderPass.destroy();
+    mainRenderPass.framebuffer.destroy();
 
     shadowRenderPass.renderPass.destroy();
     for (uint8_t i = 0; i < CASCADE_COUNT; i++)
@@ -2106,16 +2136,16 @@ int main() {
     //compDisasmModule.destroy();
     //disasmComputePipeline.destroy();
 
-    deferredRenderPass.normalRoughnessImage.destroy();
-    deferredRenderPass.normalRoughnessImageView.destroy();
-    deferredRenderPass.normalRoughnessSampler.destroy();
+    mainRenderPass.normalRoughnessImage.destroy();
+    mainRenderPass.normalRoughnessImageView.destroy();
+    mainRenderPass.normalRoughnessSampler.destroy();
 
-    deferredRenderPass.albedoMetallicImage.destroy();
-    deferredRenderPass.albedoMetallicImageView.destroy();
-    deferredRenderPass.albedoMetallicSampler.destroy();
+    mainRenderPass.albedoMetallicImage.destroy();
+    mainRenderPass.albedoMetallicImageView.destroy();
+    mainRenderPass.albedoMetallicSampler.destroy();
 
-    deferredRenderPass.depthImage.destroy();
-    deferredRenderPass.depthImageView.destroy();
+    mainRenderPass.depthImage.destroy();
+    mainRenderPass.depthImageView.destroy();
 
     shadowRenderPass.depthImage.destroy();
     shadowRenderPass.depthImageView.destroy();

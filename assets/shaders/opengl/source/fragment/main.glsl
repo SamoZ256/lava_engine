@@ -24,7 +24,6 @@ uniform sampler2D u_albedoMetallic;
 uniform samplerCube u_irradianceMap;
 uniform samplerCube u_prefilteredMap;
 uniform sampler2D u_brdfLutMap;
-uniform sampler2D u_ssaoTex;
 
 layout(location = 0) in vec2 v_texCoord;
 layout(location = 0) out vec4 FragColor;
@@ -179,15 +178,15 @@ float getVisibility(vec3 position, vec3 normal)
 
 void main()
 {
-    float depth = texture(u_depth, v_texCoord).x;
+    float depth = texelFetch(u_depth, ivec2(gl_FragCoord.xy), 0).x;
     mat4 param = u_vp.invViewProj;
     vec2 param_1 = v_texCoord;
     float param_2 = depth;
     vec3 position = reconstructPosFromDepth(param, param_1, param_2);
-    vec4 normalRoughness = texture(u_normalRoughness, v_texCoord);
+    vec4 normalRoughness = texelFetch(u_normalRoughness, ivec2(gl_FragCoord.xy), 0);
     vec3 normal = normalRoughness.xyz;
     float roughness = normalRoughness.w;
-    vec4 albedoMetallic = texture(u_albedoMetallic, v_texCoord);
+    vec4 albedoMetallic = texelFetch(u_albedoMetallic, ivec2(gl_FragCoord.xy), 0);
     vec3 albedo = albedoMetallic.xyz;
     float metallic = albedoMetallic.w;
     vec3 posToCamera = u_vp.cameraPos - position;
@@ -216,7 +215,7 @@ void main()
     vec3 prefilteredColor = textureLod(u_prefilteredMap, R, roughness * 4.0).xyz;
     vec2 brdf = texture(u_brdfLutMap, vec2(max(dot(normal, viewDir), 0.0), roughness)).xy;
     vec3 specular = prefilteredColor * ((kS * brdf.x) + vec3(brdf.y));
-    vec3 ambient = ((kD * diffuse) + specular) * texture(u_ssaoTex, v_texCoord).x;
+    vec3 ambient = (kD * diffuse) + specular;
     result += ambient;
     FragColor = vec4(result, 1.0);
 }

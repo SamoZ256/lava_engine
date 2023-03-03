@@ -28,11 +28,9 @@ layout (set = 1, binding = 0) uniform samplerCube u_irradianceMap;
 layout (set = 1, binding = 1) uniform samplerCube u_prefilteredMap;
 layout (set = 1, binding = 2) uniform sampler2D u_brdfLutMap;
 
-layout (set = 2, binding = 0) uniform sampler2D u_depth;
-layout (set = 2, binding = 1) uniform sampler2D u_normalRoughness;
-layout (set = 2, binding = 2) uniform sampler2D u_albedoMetallic;
-
-layout (set = 2, binding = 3) uniform sampler2D u_ssaoTex;
+layout (input_attachment_index = 0, set = 2, binding = 0) uniform subpassInput u_depth;
+layout (input_attachment_index = 1, set = 2, binding = 1) uniform subpassInput u_normalRoughness;
+layout (input_attachment_index = 2, set = 2, binding = 2) uniform subpassInput u_albedoMetallic;
 
 //Constants
 const float PI = 3.14159265359;
@@ -210,14 +208,14 @@ float getVisibility(vec3 position, vec3 normal) {
 
 void main() {
     //Unpacking G-Buffers
-	float depth = texture(u_depth, v_texCoord).r;
+	float depth = subpassLoad(u_depth).r;
     vec3 position = reconstructPosFromDepth(u_vp.invViewProj, v_texCoord, depth);
 
-	vec4 normalRoughness = texture(u_normalRoughness, v_texCoord);
+	vec4 normalRoughness = subpassLoad(u_normalRoughness);
 	vec3 normal = normalRoughness.xyz;
 	float roughness = normalRoughness.a;
 
-	vec4 albedoMetallic = texture(u_albedoMetallic, v_texCoord);
+	vec4 albedoMetallic = subpassLoad(u_albedoMetallic);
 	vec3 albedo = albedoMetallic.rgb;
 	float metallic = albedoMetallic.a;
 
@@ -248,7 +246,7 @@ void main() {
     vec2 brdf  = texture(u_brdfLutMap, vec2(max(dot(normal, viewDir), 0.0), roughness)).rg;
     vec3 specular = prefilteredColor * (kS * brdf.x + brdf.y);
 
-    vec3 ambient = (kD * diffuse + specular) * texture(u_ssaoTex, v_texCoord).r;
+    vec3 ambient = (kD * diffuse + specular);
 
     result += ambient;
 

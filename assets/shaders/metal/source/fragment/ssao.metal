@@ -144,7 +144,7 @@ float computeAO(thread const float3& normal, thread const float2& direction, thr
     float3 horizonVector;
     for (int i = 2; i < 10; i++)
     {
-        float2 marchPosition = v_texCoord + (((texelSize * float(i)) * direction) * 8.0);
+        float2 marchPosition = v_texCoord + (((texelSize * float(i)) * direction) * 1.0);
         float depth = u_depth.sample(u_depthSmplr, float2(marchPosition.x, marchPosition.y)).x;
         float4x4 param = u_vp.invViewProj;
         float2 param_1 = marchPosition;
