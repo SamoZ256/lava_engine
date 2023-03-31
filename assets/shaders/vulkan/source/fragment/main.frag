@@ -34,13 +34,10 @@ layout (input_attachment_index = 2, set = 2, binding = 2) uniform subpassInput u
 
 //Constants
 const float PI = 3.14159265359;
-/*
 #define SHADOW_SAMPLE_COUNT 16
 #define SHADOW_PENUMBRA_SIZE 2.0
-*/
 //const int PENUMBRA_SAMPLE_COUNT = 4;
 
-/*
 vec2 poissonDisk[16] = vec2[](
    vec2( -0.94201624, -0.39906216 ),
    vec2( 0.94558609, -0.76890725 ),
@@ -59,7 +56,6 @@ vec2 poissonDisk[16] = vec2[](
    vec2( 0.19984126, 0.78641367 ),
    vec2( 0.14383161, -0.14100790 )
 );
-*/
 
 //Random number generator
 float random(vec3 seed, int i) {
@@ -194,11 +190,9 @@ float getVisibility(vec3 position, vec3 normal) {
     for (int i = 0; i < SHADOW_SAMPLE_COUNT; i++) {
         int index = i % 16;//int(SHADOW_SAMPLE_COUNT * random(position, i)) % 16;
         vec2 coord = vec2(shadowCoord.xy + normalize(poissonDisk[index]) * random(position, i) * layerRatio / 700.0 * SHADOW_PENUMBRA_SIZE * texelSize);
-        float currentDist = (shadowCoord.z - bias) - texture(u_shadowMap, vec3(coord, layer)).x;
-        if (currentDist > 0.0) {
-            occlusion += 1.0;// / clamp(currentDist, 1.0, 2.0)
-            //shadowDist = getShadowDist(currentDist);
-        }
+        //float currentDist = (shadowCoord.z - bias) - texture(u_shadowMap, vec3(coord, layer)).x;
+        occlusion += texture(u_shadowMap, vec4(coord, layer, shadowCoord.z - bias)).x;//1.0;// / clamp(currentDist, 1.0, 2.0)
+        //shadowDist = getShadowDist(currentDist);
     }
     */
 

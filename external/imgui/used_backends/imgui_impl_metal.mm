@@ -115,6 +115,38 @@ bool ImGui_ImplMetal_CreateDeviceObjects(MTL::Device* device)
     return ImGui_ImplMetal_CreateDeviceObjects((__bridge id<MTLDevice>)(device));
 }
 
+#else
+
+bool ImGui_ImplMetal_Init(void* device)
+{
+    return ImGui_ImplMetal_Init((__bridge id<MTLDevice>)(device));
+}
+
+void ImGui_ImplMetal_NewFrame(void* renderPassDescriptor)
+{
+    ImGui_ImplMetal_NewFrame((__bridge MTLRenderPassDescriptor*)(renderPassDescriptor));
+}
+
+void ImGui_ImplMetal_RenderDrawData(ImDrawData* draw_data,
+                                    void* commandBuffer,
+                                    void* commandEncoder)
+{
+    ImGui_ImplMetal_RenderDrawData(draw_data,
+                                   (__bridge id<MTLCommandBuffer>)(commandBuffer),
+                                   (__bridge id<MTLRenderCommandEncoder>)(commandEncoder));
+
+}
+
+bool ImGui_ImplMetal_CreateFontsTexture(void* device)
+{
+    return ImGui_ImplMetal_CreateFontsTexture((__bridge id<MTLDevice>)(device));
+}
+
+bool ImGui_ImplMetal_CreateDeviceObjects(void* device)
+{
+    return ImGui_ImplMetal_CreateDeviceObjects((__bridge id<MTLDevice>)(device));
+}
+
 #endif // #ifdef IMGUI_IMPL_METAL_CPP
 
 #pragma mark - Dear ImGui Metal Backend API

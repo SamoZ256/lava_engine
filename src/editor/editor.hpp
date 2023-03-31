@@ -66,7 +66,7 @@ public:
 #ifdef LV_BACKEND_VULKAN
     std::vector<VkDescriptorSet> viewportSets;
 #elif defined(LV_BACKEND_METAL)
-    std::vector<MTL::Texture*> viewportSets;
+    std::vector<id> viewportSets;
 #elif defined(LV_BACKEND_OPENGL)
     GLuint viewportSet;
 #endif
@@ -94,13 +94,13 @@ public:
     VkDescriptorSet rotateButtonSet;
     VkDescriptorSet scaleButtonSet;
 #elif defined(LV_BACKEND_METAL)
-    MTL::Texture* playButtonSet;
-    MTL::Texture* stopButtonSet;
-    MTL::Texture* folderSet;
-    MTL::Texture* fileSet;
-    MTL::Texture* translateButtonSet;
-    MTL::Texture* rotateButtonSet;
-    MTL::Texture* scaleButtonSet;
+    id playButtonSet;
+    id stopButtonSet;
+    id folderSet;
+    id fileSet;
+    id translateButtonSet;
+    id rotateButtonSet;
+    id scaleButtonSet;
 #elif defined(LV_BACKEND_OPENGL)
     GLuint playButtonSet;
     GLuint stopButtonSet;
@@ -125,7 +125,7 @@ public:
 #ifdef LV_BACKEND_VULKAN
         std::vector<VkImageView>& viewportImageViews, VkSampler& viewportSampler
 #elif defined(LV_BACKEND_METAL)
-        std::vector<MTL::Texture*>& viewportImages
+        std::vector<id>& viewportImages
 #elif defined(LV_BACKEND_OPENGL)
         GLuint viewportImage
 #endif

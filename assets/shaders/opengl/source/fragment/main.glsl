@@ -27,17 +27,18 @@ uniform sampler2D u_brdfLutMap;
 
 layout(location = 0) in vec2 v_texCoord;
 layout(location = 0) out vec4 FragColor;
+vec2 poissonDisk[16];
 
 vec3 reconstructPosFromDepth(mat4 invViewProj, vec2 texCoord, float depth)
 {
     vec3 posInViewProj = vec3((texCoord.x * 2.0) - 1.0, ((1.0 - texCoord.y) * 2.0) - 1.0, depth);
     vec4 position = invViewProj * vec4(posInViewProj, 1.0);
-    float _87 = position.w;
-    vec4 _88 = position;
-    vec3 _91 = _88.xyz / vec3(_87);
-    position.x = _91.x;
-    position.y = _91.y;
-    position.z = _91.z;
+    float _140 = position.w;
+    vec4 _141 = position;
+    vec3 _144 = _141.xyz / vec3(_140);
+    position.x = _144.x;
+    position.y = _144.y;
+    position.z = _144.z;
     return position.xyz;
 }
 
@@ -116,46 +117,46 @@ float getVisibility(vec3 position, vec3 normal)
     for (int i = 0; i < 3; i++)
     {
         shadowCoord = u_shadow.VPs[i] * vec4(position, 1.0);
-        float _351 = shadowCoord.w;
-        vec4 _352 = shadowCoord;
-        vec3 _355 = _352.xyz / vec3(_351);
-        shadowCoord.x = _355.x;
-        shadowCoord.y = _355.y;
-        shadowCoord.z = _355.z;
-        vec4 _362 = shadowCoord;
-        vec2 _367 = (_362.xy * 0.5) + vec2(0.5);
-        shadowCoord.x = _367.x;
-        shadowCoord.y = _367.y;
+        float _404 = shadowCoord.w;
+        vec4 _405 = shadowCoord;
+        vec3 _408 = _405.xyz / vec3(_404);
+        shadowCoord.x = _408.x;
+        shadowCoord.y = _408.y;
+        shadowCoord.z = _408.z;
+        vec4 _415 = shadowCoord;
+        vec2 _420 = (_415.xy * 0.5) + vec2(0.5);
+        shadowCoord.x = _420.x;
+        shadowCoord.y = _420.y;
         shadowCoord.y = 1.0 - shadowCoord.y;
-        bool _379 = shadowCoord.x >= 0.00999999977648258209228515625;
-        bool _386;
-        if (_379)
+        bool _432 = shadowCoord.x >= 0.00999999977648258209228515625;
+        bool _439;
+        if (_432)
         {
-            _386 = shadowCoord.x <= 0.9900000095367431640625;
+            _439 = shadowCoord.x <= 0.9900000095367431640625;
         }
         else
         {
-            _386 = _379;
+            _439 = _432;
         }
-        bool _392;
-        if (_386)
+        bool _445;
+        if (_439)
         {
-            _392 = shadowCoord.y >= 0.00999999977648258209228515625;
+            _445 = shadowCoord.y >= 0.00999999977648258209228515625;
         }
         else
         {
-            _392 = _386;
+            _445 = _439;
         }
-        bool _398;
-        if (_392)
+        bool _451;
+        if (_445)
         {
-            _398 = shadowCoord.y <= 0.9900000095367431640625;
+            _451 = shadowCoord.y <= 0.9900000095367431640625;
         }
         else
         {
-            _398 = _392;
+            _451 = _445;
         }
-        if (_398)
+        if (_451)
         {
             layer = i;
             break;
@@ -172,12 +173,13 @@ float getVisibility(vec3 position, vec3 normal)
     }
     float bias = 0.0500000007450580596923828125 * tan(acos(dot(normal, u_light.direction)));
     bias = clamp(bias, 0.0, 0.001000000047497451305389404296875);
-    vec4 _446 = vec4(shadowCoord.xy, float(layer), shadowCoord.z - bias);
-    return texture(u_shadowMap, vec4(_446.xyz, _446.w));
+    vec4 _499 = vec4(shadowCoord.xy, float(layer), shadowCoord.z - bias);
+    return texture(u_shadowMap, vec4(_499.xyz, _499.w));
 }
 
 void main()
 {
+    poissonDisk = vec2[](vec2(-0.94201624393463134765625, -0.39906215667724609375), vec2(0.94558608531951904296875, -0.768907248973846435546875), vec2(-0.094184100627899169921875, -0.929388701915740966796875), vec2(0.34495937824249267578125, 0.29387760162353515625), vec2(-0.91588580608367919921875, 0.4577143192291259765625), vec2(-0.8154423236846923828125, -0.87912464141845703125), vec2(-0.38277542591094970703125, 0.2767684459686279296875), vec2(0.9748439788818359375, 0.7564837932586669921875), vec2(0.4432332515716552734375, -0.9751155376434326171875), vec2(0.5374298095703125, -0.473734200000762939453125), vec2(-0.2649691104888916015625, -0.418930232524871826171875), vec2(0.79197514057159423828125, 0.19090187549591064453125), vec2(-0.24188840389251708984375, 0.997065067291259765625), vec2(-0.8140995502471923828125, 0.91437590122222900390625), vec2(0.1998412609100341796875, 0.786413669586181640625), vec2(0.14383161067962646484375, -0.141007900238037109375));
     float depth = texelFetch(u_depth, ivec2(gl_FragCoord.xy), 0).x;
     mat4 param = u_vp.invViewProj;
     vec2 param_1 = v_texCoord;

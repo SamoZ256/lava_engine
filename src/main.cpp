@@ -319,6 +319,9 @@ int main() {
 	lv::DeviceCreateInfo deviceCreateInfo;
 	deviceCreateInfo.window = window;
     deviceCreateInfo.threadPool = &threadPool;
+	deviceCreateInfo.descriptorPoolSizes[LV_DESCRIPTOR_TYPE_UNIFORM_BUFFER] = 128 * 3;
+	deviceCreateInfo.descriptorPoolSizes[LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER] = 512 * 3;
+    deviceCreateInfo.descriptorPoolSizes[LV_DESCRIPTOR_TYPE_INPUT_ATTACHMENT] = 8 * 3;
 	lv::Device device(deviceCreateInfo);
 
 	lv::SwapChainCreateInfo swapChainCreateInfo;
@@ -326,14 +329,6 @@ int main() {
 	swapChainCreateInfo.vsyncEnabled = true;
     swapChainCreateInfo.maxFramesInFlight = 3;
 	lv::SwapChain swapChain(swapChainCreateInfo);
-
-	lv::DescriptorPoolCreateInfo descriptorPoolCreateInfo;
-	descriptorPoolCreateInfo.poolSizes[LV_DESCRIPTOR_TYPE_UNIFORM_BUFFER] = 128;
-	descriptorPoolCreateInfo.poolSizes[LV_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER] = 512;
-    descriptorPoolCreateInfo.poolSizes[LV_DESCRIPTOR_TYPE_INPUT_ATTACHMENT] = 8;
-	//descriptorPoolCreateInfo.poolSizes[VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE] = 2;
-	//descriptorPoolCreateInfo.poolSizes[VK_DESCRIPTOR_TYPE_STORAGE_IMAGE] = 2;
-	lv::DescriptorPool descriptorPool(descriptorPoolCreateInfo);
     
     uint8_t maxUint8 = std::numeric_limits<uint8_t>::max();
 
@@ -567,6 +562,7 @@ int main() {
     }
     shadowRenderPass.depthSampler.filter = LV_FILTER_LINEAR;
     shadowRenderPass.depthSampler.compareEnable = LV_TRUE;
+    shadowRenderPass.depthSampler.compareOp = LV_COMPARE_OP_LESS;
     shadowRenderPass.depthSampler.init();
 
     shadowRenderPass.subpass.setDepthAttachment({
@@ -913,7 +909,7 @@ int main() {
             .index = 0,
             .initialLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
             .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .loadOp = (i == 0 ? LV_ATTACHMENT_LOAD_OP_DONT_CARE : LV_ATTACHMENT_LOAD_OP_LOAD)
+            .loadOp = LvAttachmentLoadOp(i == 0 ? LV_ATTACHMENT_LOAD_OP_DONT_CARE : LV_ATTACHMENT_LOAD_OP_LOAD)
         });
 
         bloomRenderPass.renderPasses[i].init();
@@ -1275,7 +1271,7 @@ int main() {
     fragSsaoCreateInfo.specializationConstants[0].offset = 0;
     fragSsaoCreateInfo.specializationConstants[0].size = sizeof(int);
 #ifdef LV_BACKEND_METAL
-    fragSsaoCreateInfo.specializationConstants[0].dataType = MTL::DataTypeInt;
+    fragSsaoCreateInfo.specializationConstants[0].dataType = 29 /*MTLDataTypeInt*/; //TODO: implement this enum
 #endif
 
     fragSsaoCreateInfo.constantsData = &game.scene().graphicsSettings.aoType;
@@ -2167,7 +2163,6 @@ int main() {
 
     editor.destroy();
 
-    descriptorPool.destroy();
     swapChain.destroy();
 	device.destroy();
     instance.destroy();

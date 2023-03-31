@@ -10,8 +10,6 @@
 // If you are new to Dear ImGui, read documentation from the docs/ folder + read the top of imgui.cpp.
 // Read online: https://github.com/ocornut/imgui/tree/master/docs
 
-#define IMGUI_IMPL_METAL_CPP
-
 #include "imgui.h"      // IMGUI_IMPL_API
 
 //-----------------------------------------------------------------------------
@@ -34,6 +32,21 @@ IMGUI_IMPL_API void ImGui_ImplMetal_RenderDrawData(ImDrawData* drawData,
 IMGUI_IMPL_API bool ImGui_ImplMetal_CreateFontsTexture(id<MTLDevice> device);
 IMGUI_IMPL_API void ImGui_ImplMetal_DestroyFontsTexture();
 IMGUI_IMPL_API bool ImGui_ImplMetal_CreateDeviceObjects(id<MTLDevice> device);
+IMGUI_IMPL_API void ImGui_ImplMetal_DestroyDeviceObjects();
+
+#elif !defined(IMGUI_IMPL_METAL_CPP)
+
+IMGUI_IMPL_API bool ImGui_ImplMetal_Init(void* device);
+IMGUI_IMPL_API void ImGui_ImplMetal_Shutdown();
+IMGUI_IMPL_API void ImGui_ImplMetal_NewFrame(void* renderPassDescriptor);
+IMGUI_IMPL_API void ImGui_ImplMetal_RenderDrawData(ImDrawData* draw_data,
+                                                   void* commandBuffer,
+                                                   void* commandEncoder);
+
+// Called by Init/NewFrame/Shutdown
+IMGUI_IMPL_API bool ImGui_ImplMetal_CreateFontsTexture(void* device);
+IMGUI_IMPL_API void ImGui_ImplMetal_DestroyFontsTexture();
+IMGUI_IMPL_API bool ImGui_ImplMetal_CreateDeviceObjects(void* device);
 IMGUI_IMPL_API void ImGui_ImplMetal_DestroyDeviceObjects();
 
 #endif

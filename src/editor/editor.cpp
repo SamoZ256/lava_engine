@@ -176,7 +176,7 @@ void Editor::createViewportSet(
 #ifdef LV_BACKEND_VULKAN
         std::vector<VkImageView>& viewportImageViews, VkSampler& viewportSampler
 #elif defined(LV_BACKEND_METAL)
-        std::vector<MTL::Texture*>& viewportImages
+        std::vector<id>& viewportImages
 #elif defined(LV_BACKEND_OPENGL)
         GLuint viewportImage
 #endif
