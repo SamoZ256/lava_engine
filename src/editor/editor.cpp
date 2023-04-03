@@ -108,13 +108,13 @@ void Editor::init() {
     sampler.init();
 
 #ifdef LV_BACKEND_VULKAN
-    playButtonSet = createDescriptorSet(playButtonTex.imageView.imageViews[0], sampler.sampler);
-    stopButtonSet = createDescriptorSet(stopButtonTex.imageView.imageViews[0], sampler.sampler);
-    folderSet = createDescriptorSet(folderTex.imageView.imageViews[0], sampler.sampler);
-    fileSet = createDescriptorSet(fileTex.imageView.imageViews[0], sampler.sampler);
-    translateButtonSet = createDescriptorSet(translateButtonTex.imageView.imageViews[0], sampler.sampler);
-    rotateButtonSet = createDescriptorSet(rotateButtonTex.imageView.imageViews[0], sampler.sampler);
-    scaleButtonSet = createDescriptorSet(scaleButtonTex.imageView.imageViews[0], sampler.sampler);
+    playButtonSet = createDescriptorSet(playButtonTex.image.imageViews[0], sampler.sampler);
+    stopButtonSet = createDescriptorSet(stopButtonTex.image.imageViews[0], sampler.sampler);
+    folderSet = createDescriptorSet(folderTex.image.imageViews[0], sampler.sampler);
+    fileSet = createDescriptorSet(fileTex.image.imageViews[0], sampler.sampler);
+    translateButtonSet = createDescriptorSet(translateButtonTex.image.imageViews[0], sampler.sampler);
+    rotateButtonSet = createDescriptorSet(rotateButtonTex.image.imageViews[0], sampler.sampler);
+    scaleButtonSet = createDescriptorSet(scaleButtonTex.image.imageViews[0], sampler.sampler);
 #elif defined(LV_BACKEND_METAL)
     playButtonSet = playButtonTex.image.images[0];
     stopButtonSet = stopButtonTex.image.images[0];
