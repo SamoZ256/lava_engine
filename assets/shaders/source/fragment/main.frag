@@ -28,9 +28,9 @@ layout (set = 1, binding = 0) uniform samplerCube u_irradianceMap;
 layout (set = 1, binding = 1) uniform samplerCube u_prefilteredMap;
 layout (set = 1, binding = 2) uniform sampler2D u_brdfLutMap;
 
-layout (input_attachment_index = 0, set = 2, binding = 0) uniform subpassInput u_depth;
-layout (input_attachment_index = 1, set = 2, binding = 1) uniform subpassInput u_normalRoughness;
-layout (input_attachment_index = 2, set = 2, binding = 2) uniform subpassInput u_albedoMetallic;
+layout (set = 2, binding = 0, input_attachment_index = 0, color_attachment_index = 1) uniform subpassInput u_depth;
+layout (set = 2, binding = 1, input_attachment_index = 1, color_attachment_index = 2) uniform subpassInput u_normalRoughness;
+layout (set = 2, binding = 2, input_attachment_index = 2, color_attachment_index = 3) uniform subpassInput u_albedoMetallic;
 
 //Constants
 const float PI = 3.14159265359;
@@ -157,9 +157,9 @@ float getVisibility(vec3 position, vec3 normal) {
         return 1.0;
     }
 
-    float layerRatio = 1.0;
-    if (layer != 0)
-        layerRatio = 1.0 / (layer * 2.0);//((CASCADE_LEVELS[layer] - CASCADE_LEVELS[layer - 1]) / CASCADE_LEVELS[0]) * layer;
+    //float layerRatio = 1.0;
+    //if (layer != 0)
+    //    layerRatio = 1.0 / (layer * 2.0);//((CASCADE_LEVELS[layer] - CASCADE_LEVELS[layer - 1]) / CASCADE_LEVELS[0]) * layer;
 
     //Shadows
     float bias = 0.05 * tan(acos(dot(normal, u_light.direction)));

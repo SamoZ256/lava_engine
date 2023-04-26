@@ -555,6 +555,7 @@ int main() {
         .format = shadowRenderPass.depthImage.format,
         .index = 0,
         .loadOp = LV_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = LV_ATTACHMENT_STORE_OP_STORE,
         .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
     });
 
@@ -652,26 +653,28 @@ int main() {
     mainRenderPass.renderPass.addAttachment({
         .format = mainRenderPass.colorImage.format,
         .index = 0,
+        .storeOp = LV_ATTACHMENT_STORE_OP_STORE,
         .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
     });
     mainRenderPass.renderPass.addAttachment({
         .format = mainRenderPass.normalRoughnessImage.format,
         .index = 1,
+        .storeOp = LV_ATTACHMENT_STORE_OP_STORE,
         .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
     });
     mainRenderPass.renderPass.addAttachment({
         .format = mainRenderPass.albedoMetallicImage.format,
         .index = 2,
-        .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-#ifdef LV_BACKEND_VULKAN
-        ,
-        .storeOp = LV_ATTACHMENT_STORE_OP_DONT_CARE
+#ifdef LV_BACKEND_METAL
+        .storeOp = LV_ATTACHMENT_STORE_OP_STORE, //TODO: remove this
 #endif
+        .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
     });
     mainRenderPass.renderPass.addAttachment({
         .format = mainRenderPass.depthImage.format,
         .index = 3,
         .loadOp = LV_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = LV_ATTACHMENT_STORE_OP_STORE,
         .initialLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
         .finalLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
     });
@@ -762,6 +765,7 @@ int main() {
     ssaoRenderPass.renderPass.addAttachment({
         .format = ssaoRenderPass.colorImage.format,
         .index = 0,
+        .storeOp = LV_ATTACHMENT_STORE_OP_STORE,
         .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
     });
 
@@ -769,7 +773,6 @@ int main() {
         .format = mainRenderPass.halfDepthImage.format,
         .index = 1,
         .loadOp = LV_ATTACHMENT_LOAD_OP_LOAD,
-        .storeOp = LV_ATTACHMENT_STORE_OP_DONT_CARE,
         .initialLayout = LV_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         .finalLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
     });
@@ -814,6 +817,7 @@ int main() {
     ssaoBlurRenderPass.renderPass.addAttachment({
         .format = ssaoBlurRenderPass.colorImage.format,
         .index = 0,
+        .storeOp = LV_ATTACHMENT_STORE_OP_STORE,
         .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         .loadOp = LV_ATTACHMENT_LOAD_OP_CLEAR
     });
@@ -822,7 +826,6 @@ int main() {
         .format = mainRenderPass.depthImage.format,
         .index = 1,
         .loadOp = LV_ATTACHMENT_LOAD_OP_LOAD,
-        .storeOp = LV_ATTACHMENT_STORE_OP_DONT_CARE,
         .initialLayout = LV_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
         .finalLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
     });
@@ -837,12 +840,10 @@ int main() {
         }
     });
 
-#ifndef LV_BACKEND_OPENGL
     ssaoBlurRenderPass.framebuffer.setDepthAttachment({
         .image = &mainRenderPass.depthImage,
         .index = 1
     });
-#endif
 
     ssaoBlurRenderPass.framebuffer.init(&ssaoBlurRenderPass.renderPass);
     ssaoBlurRenderPass.commandBuffer.init();
@@ -878,9 +879,10 @@ int main() {
         bloomRenderPass.renderPasses[i].addAttachment({
             .format = bloomRenderPass.colorImages[0].format,
             .index = 0,
+            .loadOp = LvAttachmentLoadOp(i == 0 ? LV_ATTACHMENT_LOAD_OP_DONT_CARE : LV_ATTACHMENT_LOAD_OP_LOAD),
+            .storeOp = LV_ATTACHMENT_STORE_OP_STORE,
             .initialLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .loadOp = LvAttachmentLoadOp(i == 0 ? LV_ATTACHMENT_LOAD_OP_DONT_CARE : LV_ATTACHMENT_LOAD_OP_LOAD)
+            .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
         });
 
         bloomRenderPass.renderPasses[i].init();
@@ -926,6 +928,7 @@ int main() {
     hdrRenderPass.renderPass.addAttachment({
         .format = hdrRenderPass.colorImage.format,
         .index = 0,
+        .storeOp = LV_ATTACHMENT_STORE_OP_STORE,
         .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
     });
 
