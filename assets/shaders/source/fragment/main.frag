@@ -1,6 +1,12 @@
 #version 450
 
-#include "../Utility/utility.glsl"
+vec3 reconstructPosFromDepth(in mat4 invViewProj, in vec2 texCoord, in float depth) {
+    vec3 posInViewProj = vec3(texCoord.x * 2.0 - 1.0, (1.0 - texCoord.y) * 2.0 - 1.0, depth);
+    vec4 position = invViewProj * vec4(posInViewProj, 1.0);
+    position.xyz /= position.w;
+
+    return position.xyz;
+}
 
 layout (location = 0) out vec4 FragColor;
 
@@ -28,9 +34,9 @@ layout (set = 1, binding = 0) uniform samplerCube u_irradianceMap;
 layout (set = 1, binding = 1) uniform samplerCube u_prefilteredMap;
 layout (set = 1, binding = 2) uniform sampler2D u_brdfLutMap;
 
-layout (set = 2, binding = 0, input_attachment_index = 0, color_attachment_index = 1) uniform subpassInput u_depth;
-layout (set = 2, binding = 1, input_attachment_index = 1, color_attachment_index = 2) uniform subpassInput u_normalRoughness;
-layout (set = 2, binding = 2, input_attachment_index = 2, color_attachment_index = 3) uniform subpassInput u_albedoMetallic;
+layout (set = 2, binding = 1, input_attachment_index = 1, color_attachment_index = 1) uniform subpassInput u_normalRoughness;
+layout (set = 2, binding = 2, input_attachment_index = 2, color_attachment_index = 2) uniform subpassInput u_albedoMetallic;
+layout (set = 2, binding = 0, input_attachment_index = 0, color_attachment_index = 3) uniform subpassInput u_depth;
 
 //Constants
 const float PI = 3.14159265359;

@@ -129,6 +129,10 @@ struct MainRenderPass {
 
     lv::Image halfDepthImage;
     lv::Sampler halfDepthSampler;
+
+#ifdef LV_BACKEND_METAL
+    lv::Image depthAsColorImage;
+#endif
 };
 
 #define SETUP_MAIN_0_DESCRIPTORS \
@@ -141,11 +145,6 @@ mainDescriptorSet0.addBinding(shadowRenderPass.depthSampler.descriptorInfo(shado
 mainDescriptorSet1.addBinding(skylight.sampler.descriptorInfo(skylight.irradianceMapImage), 0); \
 mainDescriptorSet1.addBinding(skylight.prefilteredMapSampler.descriptorInfo(skylight.prefilteredMapImage), 1); \
 mainDescriptorSet1.addBinding(brdfLutSampler.descriptorInfo(brdfLutTexture.image), 2);
-
-#define SETUP_MAIN_2_DESCRIPTORS \
-mainDescriptorSet2.addBinding(mainRenderPass.depthImage.descriptorInfo(LV_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL), 0); \
-mainDescriptorSet2.addBinding(mainRenderPass.normalRoughnessImage.descriptorInfo(LV_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), 1); \
-mainDescriptorSet2.addBinding(mainRenderPass.albedoMetallicImage.descriptorInfo(LV_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), 2);
 
 //SSAO render pass
 struct SSAORenderPass {
@@ -606,6 +605,14 @@ int main() {
     mainRenderPass.halfDepthImage.init(SRC_WIDTH / 2, SRC_HEIGHT / 2);
     mainRenderPass.halfDepthSampler.init();
 
+#ifdef LV_BACKEND_METAL
+    mainRenderPass.depthAsColorImage.usage = LV_IMAGE_USAGE_SAMPLED_BIT | LV_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | LV_IMAGE_USAGE_TRANSFER_SRC_BIT | LV_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+    mainRenderPass.depthAsColorImage.format = LV_FORMAT_R32_SFLOAT;
+    mainRenderPass.depthAsColorImage.aspectMask = LV_IMAGE_ASPECT_COLOR_BIT;
+    mainRenderPass.depthAsColorImage.memoryType = LV_MEMORY_TYPE_MEMORYLESS;
+    mainRenderPass.depthAsColorImage.init(SRC_WIDTH, SRC_HEIGHT);
+#endif
+
     mainRenderPass.deferredSubpass.addColorAttachment({
         .index = 1,
         .layout = LV_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
@@ -620,6 +627,13 @@ int main() {
         .index = 3,
         .layout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
     });
+
+#ifdef LV_BACKEND_METAL
+    mainRenderPass.deferredSubpass.addColorAttachment({
+        .index = 4,
+        .layout = LV_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    });
+#endif
 
     mainRenderPass.renderPass.addSubpass(&mainRenderPass.deferredSubpass);
 
@@ -647,6 +661,13 @@ int main() {
         .index = 3,
         .layout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
     });
+
+#ifdef LV_BACKEND_METAL
+    mainRenderPass.mainSubpass.addInputAttachment({
+        .index = 4,
+        .layout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+    });
+#endif
 
     mainRenderPass.renderPass.addSubpass(&mainRenderPass.mainSubpass);
 
@@ -678,6 +699,13 @@ int main() {
         .initialLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
         .finalLayout = LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
     });
+#ifdef LV_BACKEND_METAL
+    mainRenderPass.renderPass.addAttachment({
+        .format = mainRenderPass.depthAsColorImage.format,
+        .index = 4,
+        .finalLayout = LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    });
+#endif
 
 #ifdef LV_BACKEND_VULKAN
     //Dependencies
@@ -735,6 +763,12 @@ int main() {
         .image = &mainRenderPass.depthImage,
         .index = 3
     });
+#ifdef LV_BACKEND_METAL
+    mainRenderPass.framebuffer.addColorAttachment({
+        .image = &mainRenderPass.depthAsColorImage,
+        .index = 4
+    });
+#endif
 
     mainRenderPass.framebuffer.init(&mainRenderPass.renderPass);
     mainRenderPass.commandBuffer.init();
@@ -1101,6 +1135,9 @@ int main() {
 
     deferredGraphicsPipeline.addColorBlendAttachment({1});
     deferredGraphicsPipeline.addColorBlendAttachment({2});
+#ifdef LV_BACKEND_METAL
+    deferredGraphicsPipeline.addColorBlendAttachment({4});
+#endif
 
     deferredGraphicsPipeline.config.cullMode = LV_CULL_MODE_BACK_BIT;
     deferredGraphicsPipeline.config.depthTestEnable = LV_TRUE;
@@ -1138,6 +1175,11 @@ int main() {
     skylightGraphicsPipeline.vertexDescriptor = lv::Vertex3D::getVertexDescriptor();
 
     skylightGraphicsPipeline.addColorBlendAttachment({0});
+    skylightGraphicsPipeline.addColorBlendAttachment({1});
+    skylightGraphicsPipeline.addColorBlendAttachment({2});
+#ifdef LV_BACKEND_METAL
+    skylightGraphicsPipeline.addColorBlendAttachment({4});
+#endif
 
     skylightGraphicsPipeline.config.depthWriteEnable = LV_FALSE;
 
@@ -1172,6 +1214,11 @@ int main() {
     mainGraphicsPipeline.subpassIndex = 1;
 
     mainGraphicsPipeline.addColorBlendAttachment({0});
+    mainGraphicsPipeline.addColorBlendAttachment({1});
+    mainGraphicsPipeline.addColorBlendAttachment({2});
+#ifdef LV_BACKEND_METAL
+    mainGraphicsPipeline.addColorBlendAttachment({4});
+#endif
 
     mainGraphicsPipeline.config.depthTestEnable = LV_TRUE;
     mainGraphicsPipeline.config.depthWriteEnable = LV_FALSE;
@@ -1509,7 +1556,13 @@ int main() {
     lv::DescriptorSet mainDescriptorSet2;
     mainDescriptorSet2.pipelineLayout = &mainLayout;
     mainDescriptorSet2.layoutIndex = 2;
-    SETUP_MAIN_2_DESCRIPTORS
+    #ifdef LV_BACKEND_VULKAN
+    mainDescriptorSet2.addBinding(mainRenderPass.depthImage.descriptorInfo(LV_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL), 0);
+    #elif defined(LV_BACKEND_METAL)
+    mainDescriptorSet2.addBinding(mainRenderPass.depthAsColorImage.descriptorInfo(LV_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, LV_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL), 0);
+    #endif
+    mainDescriptorSet2.addBinding(mainRenderPass.normalRoughnessImage.descriptorInfo(LV_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), 1);
+    mainDescriptorSet2.addBinding(mainRenderPass.albedoMetallicImage.descriptorInfo(LV_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, LV_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), 2);
     mainDescriptorSet2.init();
 
     lv::DescriptorSet downsampleDescriptorSets[BLOOM_MIP_COUNT];
@@ -1752,7 +1805,7 @@ int main() {
 
         skylight.vertexBuffer.bindVertexBuffer();
         skylight.indexBuffer.bindIndexBuffer(LV_INDEX_TYPE_UINT32);
-        skylight.indexBuffer.renderIndexed(sizeof(uint32_t));
+        skylight.indexBuffer.drawIndexed(sizeof(uint32_t));
 
         //Main
         mainGraphicsPipeline.bind();

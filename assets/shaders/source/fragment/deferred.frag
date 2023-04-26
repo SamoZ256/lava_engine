@@ -1,8 +1,8 @@
 #version 450
 
 //layout (location = 0) out vec4 outPositionDepth;
-layout (location = 0) out vec4 outNormalRoughness;
-layout (location = 1) out vec4 outAlbedoMetallic;
+layout (location = 0, color_attachment_index = 1) out vec4 outNormalRoughness;
+layout (location = 1, color_attachment_index = 2) out vec4 outAlbedoMetallic;
 
 //layout (location = 0) in vec3 inPosition;
 layout (location = 0) in vec2 v_texCoord;
